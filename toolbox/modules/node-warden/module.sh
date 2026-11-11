@@ -41,9 +41,12 @@ module_run() {
       exec bash "$BOOTSTRAP" "$action" "$@"
       ;;
     remote)
-      printf '远程运行命令：\n'
-      printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)\n'
-      printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh) install\n'
+      local url
+      printf '远程运行命令（按可用性选择）：\n'
+      while IFS= read -r url; do
+        printf '  sudo bash <(curl -fsSL %s)\n' "$url"
+      done < <(github_url_candidates 'https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh')
+      printf '\n安装 Node Warden：在命令末尾加 install。\n'
       ;;
     help|--help|-h)
       module_list

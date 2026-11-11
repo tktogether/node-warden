@@ -53,7 +53,7 @@ sudo editor /tmp/services.json
 sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
 ~~~
 
-需要无人值守时，使用下面的完整参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试 GitHub 直连、codeload、指定的 GitHub 代理、ghfast.top 和 gh-proxy.com。可用参数和环境变量覆盖地址。
+需要无人值守时，使用下面的完整参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试 GitHub 直连、codeload、指定的 GitHub 代理、ghfast.top、gh-proxy.com 和 ghproxy.net。可用参数和环境变量覆盖地址。
 
 ~~~bash
 sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
@@ -82,9 +82,11 @@ sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubuser
 | --yes, -y | 跳过安装确认 |
 | --non-interactive | 不显示安装向导 |
 | --cn-setup | 安装完成后按当前国内网络选项执行；没有选项时使用默认值 |
+| --git-mirror URL | 国内机设置时把 GitHub 的 HTTP/HTTPS/git 地址改写为镜像地址 |
+| --no-git | 国内机设置时不修改 Git 配置 |
 | --cn-script-url URL | 覆盖安装后打印的国内网络设置脚本地址 |
 
-面板安装后会在面板地址下的 bootstrap.sh 提供同一份脚本，例如 https://panel.example.com/warden/bootstrap.sh。
+面板安装后会在面板地址下提供 bootstrap.sh 和 toolbox.sh，例如 https://panel.example.com/warden/bootstrap.sh。设置页会显示带域名、Docker 镜像和 GitHub 镜像的国内机命令。
 
 代理默认只监听本机，需要由网关转发；不要让没有来源限制的代理直接暴露到公网。
 
@@ -92,7 +94,7 @@ sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubuser
 
 ### 本地安装
 
-在终端直接执行 install 会进入安装向导，依次询问安装组件、面板路径、面板域名或完整 URL，以及是否进行国内网络设置。选择国内网络设置后会逐项询问 APT 镜像、BBR、Docker 镜像和 apt-get update。脚本会从已安装面板、certbot 证书和主机名中读取候选域名作为默认值。
+在终端直接执行 install 会进入安装向导，依次询问安装组件、面板路径、面板域名或完整 URL，以及是否进行国内网络设置。选择国内网络设置后会逐项询问 APT 镜像、BBR、Docker 镜像、GitHub 镜像和 apt-get update。脚本会从已安装面板、certbot 证书和主机名中读取候选域名作为默认值。
 
 ~~~bash
 sudo bash bootstrap.sh install
@@ -113,7 +115,9 @@ sudo bash bootstrap.sh cn-restore
 
 未提供域名或 public URL 时，脚本尝试自动检测：有证书域名的机器优先使用该域名和 HTTPS；否则使用公网 IP 和 HTTP；无法检测公网地址时使用 http://127.0.0.1:9090/warden。安装脚本会在 80/443 空闲时安装并配置 nginx 网关；指定域名时自动申请证书，证书失败时回退 HTTP。已有反向代理时加 --no-gateway。
 
-安装完成后脚本打印国内网络设置命令，地址优先使用 --cn-script-url，否则使用面板地址下的 bootstrap.sh。cn-setup 不带选项时逐项询问配置项；带 --apt-mirror、--no-apt、--no-bbr、--docker-mirror 或 --no-apt-update 时按选项执行。
+安装完成后脚本打印国内网络设置命令，地址优先使用 --cn-script-url，否则使用面板地址下的 bootstrap.sh。命令会按实际安装的组件附带 --docker-mirror 和 --git-mirror，值取自面板地址的源站。面板“设置”页显示同一命令。
+
+cn-setup 不带选项时逐项询问配置项；带 --apt-mirror、--no-apt、--no-bbr、--docker-mirror、--git-mirror、--no-git 或 --no-apt-update 时按选项执行。GitHub 镜像写入 /etc/gitconfig，改写 https://github.com/、http://github.com/、git://github.com/、git@github.com: 和 ssh://git@github.com/。SSH 地址会改为 HTTPS，访问私有仓库时需要提供 HTTPS 凭据。
 
 ## 5. 直接安装面板
 

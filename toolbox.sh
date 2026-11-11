@@ -39,10 +39,15 @@ toolbox_fetch_source() {
     urls+=("$TOOLBOX_ARCHIVE_URL")
   fi
   urls+=("$direct" "$codeload")
+  local -a prefixes=()
   if [[ -n "$TOOLBOX_GITHUB_PROXY" ]]; then
-    urls+=("${TOOLBOX_GITHUB_PROXY%/}/$direct" "${TOOLBOX_GITHUB_PROXY%/}/$codeload")
+    prefixes+=("${TOOLBOX_GITHUB_PROXY%/}")
   fi
-  urls+=("https://ghfast.top/$direct" "https://gh-proxy.com/$direct")
+  prefixes+=("https://ghfast.top" "https://gh-proxy.com" "https://ghproxy.net")
+  local prefix
+  for prefix in "${prefixes[@]}"; do
+    urls+=("$prefix/$direct" "$prefix/$codeload")
+  done
 
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     printf '错误：需要 curl 或 wget 才能自动获取工具箱源码。\n' >&2
@@ -155,7 +160,8 @@ Node Warden Toolbox
 
 远程运行（不需要手工下载源码）：
   sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
-  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh) install
+  sudo bash <(curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
+  运行 remote 操作可查看当前可用的下载通道。
 
 说明：
   读取类工具可以直接运行；安装、配置和测试类操作需要 root 权限。
@@ -163,10 +169,20 @@ Node Warden Toolbox
 EOF
 }
 
+toolbox_remote_urls() {
+  local raw="https://raw.githubusercontent.com/${TOOLBOX_REPO}/${TOOLBOX_BRANCH}/toolbox.sh" candidate
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && printf '%s\n' "$candidate"
+  done < <(github_url_candidates "$raw")
+}
+
 remote_command() {
-  printf '远程运行命令：\n'
-  printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/%s/%s/toolbox.sh)\n' "$TOOLBOX_REPO" "$TOOLBOX_BRANCH"
-  printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/%s/%s/toolbox.sh) install\n' "$TOOLBOX_REPO" "$TOOLBOX_BRANCH"
+  local url
+  printf '远程运行命令（按可用性选择）：\n'
+  while IFS= read -r url; do
+    printf '  sudo bash <(curl -fsSL %s)\n' "$url"
+  done < <(toolbox_remote_urls)
+  printf '\n安装 Node Warden：在命令末尾加 install。\n'
 }
 
 module_ids() {

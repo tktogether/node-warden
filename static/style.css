@@ -493,6 +493,9 @@ td.nowrap { white-space: nowrap; }
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .config-output { max-height: 62vh; }
+.command-box { margin-top: 12px; }
+.command-box .command-output { min-height: 0; max-height: 180px; margin: 0; }
+.command-box .form-actions { margin-top: 10px; }
 .modal-hint { color: var(--faint); font-size: 10.5px; line-height: 1.6; margin-bottom: 12px; }
 .modal-form .field { margin-top: 0; }
 .reveal-list { display: flex; flex-direction: column; gap: 10px; }

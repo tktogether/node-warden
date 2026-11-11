@@ -83,7 +83,44 @@ backup_file() {
   printf '%s\n' "$dest"
 }
 
-download_file() {
+github_raw_jsdelivr() {
+  local url=$1 rest owner repo ref path
+  case "$url" in
+    https://raw.githubusercontent.com/*) rest=${url#https://raw.githubusercontent.com/} ;;
+    *) return 1 ;;
+  esac
+  owner=${rest%%/*}
+  rest=${rest#*/}
+  repo=${rest%%/*}
+  rest=${rest#*/}
+  ref=${rest%%/*}
+  path=${rest#*/}
+  if [[ -z "$owner" || -z "$repo" || -z "$ref" || "$path" == "$rest" || -z "$path" ]]; then
+    return 1
+  fi
+  printf 'https://cdn.jsdelivr.net/gh/%s/%s@%s/%s\n' "$owner" "$repo" "$ref" "$path"
+  printf 'https://cdn.statically.io/gh/%s/%s/%s/%s\n' "$owner" "$repo" "$ref" "$path"
+}
+
+github_url_candidates() {
+  local url=$1 proxy=${NW_GITHUB_PROXY:-}
+  printf '%s\n' "$url"
+  case "$url" in
+    https://github.com/*|https://raw.githubusercontent.com/*|https://codeload.github.com/*|https://api.github.com/*|https://gist.github.com/*|https://objects.githubusercontent.com/*) ;;
+    *) return 0 ;;
+  esac
+  if [[ -n "$proxy" ]]; then
+    printf '%s/%s\n' "${proxy%/}" "$url"
+  fi
+  printf 'https://ghfast.top/%s\n' "$url"
+  printf 'https://gh-proxy.com/%s\n' "$url"
+  printf 'https://ghproxy.net/%s\n' "$url"
+  case "$url" in
+    https://raw.githubusercontent.com/*) github_raw_jsdelivr "$url" || true ;;
+  esac
+}
+
+fetch_url() {
   local url=$1
   local dest=$2
   local tmp="${dest}.part.$$"
@@ -91,17 +128,40 @@ download_file() {
   if have_cmd curl; then
     curl -fL --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 180 -o "$tmp" "$url" || {
       rm -f "$tmp"
-      die "下载失败：$url"
+      return 1
     }
   elif have_cmd wget; then
     wget -q --tries=2 --timeout=30 -O "$tmp" "$url" || {
       rm -f "$tmp"
-      die "下载失败：$url"
+      return 1
     }
   else
-    die "缺少 curl 或 wget，无法下载：$url"
+    return 1
   fi
   mv -f -- "$tmp" "$dest"
+}
+
+download_file() {
+  local url=$1 dest=$2
+  if ! have_cmd curl && ! have_cmd wget; then
+    die "缺少 curl 或 wget，无法下载：$url"
+  fi
+  fetch_url "$url" "$dest" || die "下载失败：$url"
+}
+
+download_github() {
+  local url=$1 dest=$2 candidate
+  local -a candidates=()
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && candidates+=("$candidate")
+  done < <(github_url_candidates "$url")
+  for candidate in "${candidates[@]}"; do
+    if fetch_url "$candidate" "$dest"; then
+      return 0
+    fi
+    warn "下载失败，尝试下一个地址：$candidate"
+  done
+  die "下载失败：$url"
 }
 
 pkg_manager() {

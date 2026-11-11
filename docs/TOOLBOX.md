@@ -10,7 +10,7 @@
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
 ```
 
-脚本会自动获取源码并显示统一菜单。菜单包含安装、更新、状态、卸载、常用工具和 BBR；选择“一键安装或重新配置 Node Warden”后会继续执行安装向导。
+脚本会自动获取源码并显示统一菜单。菜单包含安装、更新、状态、卸载、常用工具和 BBR；选择“一键安装或重新配置 Node Warden”后会继续执行安装向导。国内网络环境下如果直连失败，可以改用代理地址，或先运行 `remote` 查看可用通道。
 
 也可以直接执行操作：
 
@@ -43,7 +43,9 @@ bash toolbox.sh remote
 1. `NW_TOOLBOX_ARCHIVE_URLS` 或 `NW_ARCHIVE_URLS` 指定的地址；
 2. `NW_TOOLBOX_ARCHIVE_URL` 或 `NW_ARCHIVE_URL` 指定的地址；
 3. GitHub archive、codeload；
-4. `NW_GITHUB_PROXY`、ghfast.top、gh-proxy.com。
+4. `NW_GITHUB_PROXY`、ghfast.top、gh-proxy.com、ghproxy.net。
+
+需要查看当前可用通道时执行 `sudo bash toolbox.sh remote`。脚本内部的 GitHub 下载（包括 BBR 的 tcp.sh）也会按同样顺序回退；raw 文件还会尝试 jsDelivr 和 statically。
 
 获取成功后使用临时目录中的源码继续执行。安装时 bootstrap.sh 直接使用这份源码，不会再次要求手工下载。
 

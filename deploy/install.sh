@@ -207,6 +207,7 @@ cp -a "$ROOT_DIR/static" "$INSTALL_DIR/static"
 install -m 0644 "$ROOT_DIR/VERSION" "$INSTALL_DIR/VERSION"
 install -m 0644 "$ROOT_DIR/README.md" "$INSTALL_DIR/README.md"
 install -m 0755 "$ROOT_DIR/bootstrap.sh" "$INSTALL_DIR/bootstrap.sh"
+install -m 0755 "$ROOT_DIR/toolbox.sh" "$INSTALL_DIR/toolbox.sh"
 find "$INSTALL_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
 chown -R root:root "$INSTALL_DIR"
 

@@ -190,7 +190,7 @@ bbr_legacy() {
   local tmp
   tmp=$(mktemp)
   info "下载 tcp.sh 以检查版本；不会执行。"
-  download_file "$TCP_SH_URL" "$tmp"
+  download_github "$TCP_SH_URL" "$tmp"
   kv "文件大小" "$(wc -c < "$tmp") 字节"
   if have_cmd sha256sum; then
     kv "SHA-256" "$(sha256sum "$tmp" | awk '{print $1}')"

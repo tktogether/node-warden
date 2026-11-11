@@ -18,6 +18,14 @@ if validate_port 65536; then fail 'port 65536 accepted'; fi
 validate_seconds 10 || fail 'valid seconds rejected'
 if validate_seconds 0; then fail 'seconds 0 accepted'; fi
 
+candidates=$(github_url_candidates 'https://raw.githubusercontent.com/tktogether/node-warden/main/VERSION')
+grep -q '^https://raw.githubusercontent.com/' <<< "$candidates" || fail 'direct GitHub URL missing'
+grep -q 'gh-proxy.com' <<< "$candidates" || fail 'gh-proxy fallback missing'
+grep -q 'ghproxy.net' <<< "$candidates" || fail 'ghproxy.net fallback missing'
+grep -q 'cdn.jsdelivr.net' <<< "$candidates" || fail 'jsDelivr fallback missing'
+archive_candidates=$(github_url_candidates 'https://github.com/tktogether/node-warden/archive/refs/heads/main.tar.gz')
+grep -q 'ghfast.top' <<< "$archive_candidates" || fail 'ghfast fallback missing'
+
 version=$(bash toolbox.sh version)
 [ "$version" = "Node Warden Toolbox $(tr -d '[:space:]' < VERSION)" ] || fail "unexpected version: $version"
 
@@ -29,6 +37,8 @@ grep -q '不需要手工下载源码' <<< "$help" || fail 'remote install note m
 remote=$(bash toolbox.sh remote)
 grep -q 'toolbox.sh' <<< "$remote" || fail 'remote command missing'
 grep -q ' install' <<< "$remote" || fail 'remote install command missing'
+grep -q 'gh-proxy.com' <<< "$remote" || fail 'remote proxy command missing'
+grep -q 'cdn.jsdelivr.net' <<< "$remote" || fail 'remote jsDelivr command missing'
 
 modules=$(bash toolbox.sh list)
 for id in common node-warden bbr; do

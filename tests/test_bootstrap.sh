@@ -77,7 +77,7 @@ if ( BASE_PATH='/../etc'; validate_base_path ) >/dev/null 2>&1; then fail 'bad b
   index=0
   yes_index=0
   answers=('1' '/warden' 'example.com')
-  yes_answers=('y' 'n' 'n' 'n' 'n' 'y')
+  yes_answers=('y' 'n' 'n' 'n' 'n' 'n' 'y')
   interactive_install >/dev/null
   [ "$CN_SETUP_AFTER_INSTALL" = 1 ] || fail 'interactive CN setup flag'
   [ "$NO_APT" = 1 ] || fail 'interactive CN apt skip'
@@ -99,7 +99,7 @@ if ( BASE_PATH='/../etc'; validate_base_path ) >/dev/null 2>&1; then fail 'bad b
   index=0
   yes_index=0
   answers=('https://mirrors.example.com' 'https://docker.example.com')
-  yes_answers=('y' 'n' 'y' 'n')
+  yes_answers=('y' 'n' 'y' 'n' 'n')
   ask_value() { printf -v "$3" '%s' "${answers[$index]}"; index=$((index + 1)); }
   ask_yes_no() {
     local value=${yes_answers[$yes_index]:-n}
@@ -111,7 +111,36 @@ if ( BASE_PATH='/../etc'; validate_base_path ) >/dev/null 2>&1; then fail 'bad b
   [ "$NO_BBR" = 1 ] || fail 'CN BBR option'
   [ "$NO_APT_UPDATE" = 1 ] || fail 'CN apt update option'
   [ "$DOCKER_MIRROR" = 'https://docker.example.com' ] || fail 'CN Docker mirror option'
+  [ "$NO_GIT" = 1 ] || fail 'CN Git skip option'
   [ "$CN_OPTIONS_CONFIGURED" = 1 ] || fail 'CN options configured flag'
+)
+
+(
+  tmp=$(mktemp -d)
+  mkdir -p "$tmp/backup"
+  DRY_RUN=0
+  GIT_CONFIG_FILE="$tmp/gitconfig"
+  cn_apply_git_mirror "$tmp/backup" 'https://mirror.example.com' >/dev/null
+  base='https://mirror.example.com/https://github.com/'
+  count=$(git config --file "$GIT_CONFIG_FILE" --get-all "url.${base}.insteadOf" | wc -l)
+  [ "$count" = 5 ] || fail 'Git mirror insteadOf count'
+  values=$(git config --file "$GIT_CONFIG_FILE" --get-all "url.${base}.insteadOf")
+  grep -qx 'https://github.com/' <<< "$values" || fail 'Git mirror https rewrite'
+  grep -qx 'http://github.com/' <<< "$values" || fail 'Git mirror http rewrite'
+  grep -qx 'git://github.com/' <<< "$values" || fail 'Git mirror git rewrite'
+  grep -qx 'git@github.com:' <<< "$values" || fail 'Git mirror scp rewrite'
+  grep -qx 'ssh://git@github.com/' <<< "$values" || fail 'Git mirror ssh rewrite'
+  rm -rf "$tmp"
+)
+
+(
+  tmp=$(mktemp -d)
+  mkdir -p "$tmp/backup"
+  DRY_RUN=1
+  GIT_CONFIG_FILE="$tmp/gitconfig"
+  cn_apply_git_mirror "$tmp/backup" 'https://mirror.example.com' >/dev/null
+  [ ! -e "$GIT_CONFIG_FILE" ] || fail 'Git mirror dry-run changed file'
+  rm -rf "$tmp"
 )
 
 (

@@ -57,6 +57,9 @@ NO_BBR=0
 NO_APT_UPDATE=0
 APT_MIRROR=https://mirrors.aliyun.com
 DOCKER_MIRROR=''
+GIT_MIRROR=''
+NO_GIT=0
+GIT_CONFIG_FILE=${NW_GIT_CONFIG_FILE:-/etc/gitconfig}
 BACKUP_DIR=''
 NON_INTERACTIVE=0
 ASSUME_YES=0
@@ -154,6 +157,8 @@ Node Warden 统一入口
   --no-bbr               不启用 BBR
   --no-apt-update        cn-setup 后不执行 apt-get update
   --docker-mirror URL    写入 Docker daemon.json 的 registry-mirrors
+  --git-mirror URL       把 GitHub 地址改写为镜像地址；处理 HTTPS、HTTP、git:// 和 SSH 地址
+  --no-git               不修改 Git 配置
   --backup-dir DIR       指定 cn-setup 备份目录（cn-restore 也可使用）
 
 示例：
@@ -209,6 +214,8 @@ parse_options() {
       --no-bbr) NO_BBR=1; CN_OPTION_EXPLICIT=1; shift ;;
       --no-apt-update) NO_APT_UPDATE=1; CN_OPTION_EXPLICIT=1; shift ;;
       --docker-mirror) [ $# -ge 2 ] || die '--docker-mirror 缺少值'; DOCKER_MIRROR=$2; CN_OPTION_EXPLICIT=1; shift 2 ;;
+      --git-mirror) [ $# -ge 2 ] || die '--git-mirror 缺少值'; GIT_MIRROR=$2; NO_GIT=0; CN_OPTION_EXPLICIT=1; shift 2 ;;
+      --no-git) NO_GIT=1; CN_OPTION_EXPLICIT=1; shift ;;
       --backup-dir) [ $# -ge 2 ] || die '--backup-dir 缺少值'; BACKUP_DIR=$2; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die "未知参数：$1" ;;
@@ -268,6 +275,9 @@ validate_options() {
   if [ -n "$DOCKER_MIRROR" ] && ! is_http_url "$DOCKER_MIRROR"; then
     die "Docker 镜像地址无效：$DOCKER_MIRROR"
   fi
+  if [ -n "$GIT_MIRROR" ] && ! is_http_url "$GIT_MIRROR"; then
+    die "Git 镜像地址无效：$GIT_MIRROR"
+  fi
   if [ -n "$ACME_EMAIL" ]; then
     case "$ACME_EMAIL" in
       *@*.*) ;;
@@ -300,10 +310,13 @@ download_source() {
   fi
   [ -n "${NW_ARCHIVE_URL:-}" ] && urls+=("$NW_ARCHIVE_URL")
   urls+=("$direct" "$codeload")
+  local prefix
   if [ -n "${NW_GITHUB_PROXY:-}" ]; then
     urls+=("${NW_GITHUB_PROXY%/}/$direct" "${NW_GITHUB_PROXY%/}/$codeload")
   fi
-  urls+=("https://ghfast.top/$direct" "https://gh-proxy.com/$direct")
+  for prefix in "https://ghfast.top" "https://gh-proxy.com" "https://ghproxy.net"; do
+    urls+=("$prefix/$direct" "$prefix/$codeload")
+  done
   if [ "$DRY_RUN" = 1 ]; then
     note '将按以下顺序尝试下载源码：'
     printf '  %s\n' "${urls[@]}"
@@ -1136,6 +1149,29 @@ PY
   note "已设置 Docker 镜像：$mirror"
 }
 
+cn_apply_git_mirror() {
+  local backup_dir=$1 mirror=${2%/} base
+  command -v git >/dev/null 2>&1 || { warn '未安装 git，跳过 Git 镜像配置。'; return 0; }
+  cn_record_file "$backup_dir" "$GIT_CONFIG_FILE"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ set %s url.%s/https://github.com/.insteadOf for https://github.com/, http://github.com/, git://github.com/, git@github.com: and ssh://git@github.com/\n' "$GIT_CONFIG_FILE" "$mirror"
+    return 0
+  fi
+  install -d -m 0755 "$(dirname -- "$GIT_CONFIG_FILE")"
+  if [ ! -e "$GIT_CONFIG_FILE" ]; then
+    : > "$GIT_CONFIG_FILE"
+    chmod 0644 "$GIT_CONFIG_FILE"
+  fi
+  base="${mirror}/https://github.com/"
+  git config --file "$GIT_CONFIG_FILE" --unset-all "url.${base}.insteadOf" >/dev/null 2>&1 || true
+  git config --file "$GIT_CONFIG_FILE" --add "url.${base}.insteadOf" 'https://github.com/'
+  git config --file "$GIT_CONFIG_FILE" --add "url.${base}.insteadOf" 'http://github.com/'
+  git config --file "$GIT_CONFIG_FILE" --add "url.${base}.insteadOf" 'git://github.com/'
+  git config --file "$GIT_CONFIG_FILE" --add "url.${base}.insteadOf" 'git@github.com:'
+  git config --file "$GIT_CONFIG_FILE" --add "url.${base}.insteadOf" 'ssh://git@github.com/'
+  note "已设置 Git 镜像：$mirror"
+}
+
 cn_setup() {
   require_root
   need_linux
@@ -1163,6 +1199,13 @@ cn_setup() {
   fi
   if [ -n "$DOCKER_MIRROR" ]; then
     cn_apply_docker_mirror "$backup_dir" "$DOCKER_MIRROR"
+  fi
+  if [ "$NO_GIT" = 1 ]; then
+    note '已跳过 Git 镜像。'
+  elif [ -n "$GIT_MIRROR" ]; then
+    cn_apply_git_mirror "$backup_dir" "$GIT_MIRROR"
+  else
+    note '未设置 Git 镜像。'
   fi
   if [ "$NO_APT_UPDATE" = 0 ]; then
     run apt-get update
@@ -1425,6 +1468,16 @@ interactive_cn_options() {
   else
     DOCKER_MIRROR=''
   fi
+  if ask_yes_no '设置 GitHub 镜像（改写 git 地址）？' n; then
+    ask_value 'GitHub 镜像根地址（留空跳过）' "$GIT_MIRROR" GIT_MIRROR
+    if [ -n "$GIT_MIRROR" ] && ! is_http_url "$GIT_MIRROR"; then
+      die "Git 镜像地址无效：$GIT_MIRROR"
+    fi
+    NO_GIT=0
+  else
+    GIT_MIRROR=''
+    NO_GIT=1
+  fi
   if [ "$NO_APT" = 0 ]; then
     if ask_yes_no '修改 APT 源后执行 apt-get update？' y; then
       NO_APT_UPDATE=0
@@ -1443,6 +1496,7 @@ interactive_cn_options() {
   if [ "$NO_APT" = 0 ]; then note "  APT 镜像：$APT_MIRROR"; else note '  APT 镜像：跳过'; fi
   if [ "$NO_BBR" = 0 ]; then note '  BBR：启用'; else note '  BBR：跳过'; fi
   if [ -n "$DOCKER_MIRROR" ]; then note "  Docker 镜像：$DOCKER_MIRROR"; else note '  Docker 镜像：跳过'; fi
+  if [ "$NO_GIT" = 1 ]; then note '  GitHub 镜像：跳过'; elif [ -n "$GIT_MIRROR" ]; then note "  GitHub 镜像：$GIT_MIRROR"; else note '  GitHub 镜像：跳过'; fi
 }
 
 interactive_install() {
@@ -1481,7 +1535,7 @@ interactive_install() {
     fi
   fi
   if [ "$ASSUME_YES" = 0 ]; then
-    if ask_yes_no '是否同时进行国内网络设置（APT 镜像、BBR、可选 Docker 镜像）？' n; then
+    if ask_yes_no '是否同时进行国内网络设置（APT 镜像、BBR、可选 Docker 与 Git 镜像）？' n; then
       CN_SETUP_AFTER_INSTALL=1
       interactive_cn_options
     fi
@@ -1490,15 +1544,22 @@ interactive_install() {
 }
 
 show_cn_hint() {
-  local url=${CN_SCRIPT_URL:-}
+  local url=${CN_SCRIPT_URL:-} origin='' opts=''
   if [ -z "$url" ] && [ "$PANEL" = 1 ] && [ -n "$PUBLIC_URL" ]; then
     url="${PUBLIC_URL%/}/bootstrap.sh"
   fi
+  if [ -n "$url" ] && [ -n "$PUBLIC_URL" ]; then
+    origin=$(public_origin 2>/dev/null || true)
+  fi
+  if [ -n "$origin" ]; then
+    [ "$DOCKER_PROXY" = 1 ] && opts="$opts --docker-mirror $origin"
+    [ "$GHPROXY" = 1 ] && opts="$opts --git-mirror $origin"
+  fi
   note ''
-  note '国内网络设置（可选）：交互选择 APT 镜像、BBR 和 Docker 镜像。'
+  note '国内网络设置（可选）：选择 APT 镜像、BBR、Docker 镜像和 GitHub 镜像。'
   if [ -n "$url" ]; then
     printf '脚本地址：%s\n' "$url"
-    printf '执行：sudo bash <(curl -fsSL %s) cn-setup\n' "$url"
+    printf '执行：sudo bash <(curl -fsSL %s) cn-setup%s --yes --non-interactive\n' "$url" "$opts"
   else
     printf '在源码目录执行：sudo bash bootstrap.sh cn-setup\n'
   fi

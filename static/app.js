@@ -770,7 +770,7 @@
 
   function panel(title, note, body, options) {
     var opts = options || {};
-    return h("section", { class: "panel" },
+    return h("section", { class: "panel" + (opts.className ? " " + opts.className : "") },
       h("div", { class: "panel-head" },
         h("div", {},
           h("div", { class: "panel-title" }, title),
@@ -1870,6 +1870,32 @@
     ]);
   }
 
+  function cnSetupBody(data) {
+    var setup = data && data.cn_setup ? data.cn_setup : {};
+    var command = setup.command || "";
+    var rows = infoList([
+      ["域名", setup.domain || "未配置"],
+      ["脚本地址", setup.script_url || "未配置"],
+      ["工具箱地址", setup.toolbox_url || "未配置"],
+      ["Docker 镜像", setup.docker_mirror || "未启用"],
+      ["GitHub 镜像", setup.git_mirror || "未启用"]
+    ]);
+    if (!command) {
+      return h("div", {}, rows, h("p", { class: "modal-hint" }, "面板地址未配置，无法生成命令。"));
+    }
+    return h("div", {},
+      rows,
+      h("p", { class: "modal-hint" }, "在目标机器执行以下命令。"),
+      h("div", { class: "command-box" },
+        h("pre", { class: "config-output command-output" }, command),
+        h("div", { class: "form-actions" },
+          button("复制命令", "btn-sm", function () { copyText(command); }),
+          button("复制脚本地址", "btn-sm", function () { copyText(setup.script_url || ""); })
+        )
+      )
+    );
+  }
+
   function backupSettingsBody(data) {
     return h("div", {},
       infoList([
@@ -1900,6 +1926,7 @@
       h("div", { class: "settings-grid" },
         panel("访问密钥", "", keySettingsBody(data), { action: null }),
         panel("面板信息", "", panelSettingsBody(data)),
+        panel("国内机一键设置", "", cnSetupBody(data), { action: null, className: "span-2" }),
         panel("监控与会话", "", monitorSettingsBody(data)),
         panel("TLS 证书", "", certSettingsBody()),
         panel("备份", "", backupSettingsBody(data), { action: null })

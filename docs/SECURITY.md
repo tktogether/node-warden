@@ -25,6 +25,8 @@ bootstrap.sh 可以安装 GitHub 下载代理和 Docker 镜像代理。两者都
 - GitHub 下载代理默认 127.0.0.1:8082，只转发允许的 GitHub 主机名，但任何能访问该端口的人都可以用它下载这些主机上的内容。网关必须限制来源 IP。
 - Docker 镜像代理默认 127.0.0.1:8080，修正层 127.0.0.1:8081。它们不提供身份验证，不能直接暴露到公网。
 - bootstrap.sh 的 cn-setup 会修改 APT 源、sysctl 和可选的 Docker daemon.json，并在 /var/backups/node-warden-cn 下保留原文件；恢复前应确认备份完整。
+- cn-setup 的 GitHub 镜像会把系统级 /etc/gitconfig 中的 GitHub HTTPS、git:// 和 SSH 地址改写为镜像地址。之后本机所有 GitHub 仓库访问都会经过镜像主机；SSH 地址会改为 HTTPS，私有仓库需要 HTTPS 访问凭据，原有 SSH 密钥不再生效。恢复时会还原备份的 /etc/gitconfig。
+- Docker 镜像加速会把 Docker Hub 拉取请求交给镜像主机。镜像主机会看到仓库名和请求内容；只应配置可信主机。
 
 ## 命令执行边界
 

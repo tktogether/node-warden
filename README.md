@@ -15,6 +15,7 @@ Node Warden 是运行在单台 Linux 服务器上的服务管理控制台。它�
 - 配置备份：按服务清单中的固定路径创建、列出、下载和删除 tar.gz 备份。
 - 证书：显示证书信息，调用 certbot dry-run 检查续期。
 - 访问密钥：在设置页修改；修改后旧会话立即失效。
+- 国内机设置：设置页显示一键配置命令，自动填入面板域名、Docker 镜像和 GitHub 镜像，脚本由面板提供。
 - 审计日志：记录登录、退出、密钥修改、服务操作、备份和证书操作。
 
 ## 安全模型
@@ -53,7 +54,7 @@ sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/nod
 2. GitHub 直连；
 3. codeload.github.com；
 4. 指定的 GitHub 代理；
-5. ghfast.top、gh-proxy.com。
+5. ghfast.top、gh-proxy.com、ghproxy.net。
 
 GitHub 直连、raw 和 codeload 都可能被网络阻断。国内机器建议优先使用可用的代理或镜像地址。
 
@@ -85,7 +86,7 @@ sudo NW_ARCHIVE_URLS="https://mirror.example.com/node-warden.tar.gz https://gith
 | --repo OWNER/REPO | NW_REPO | 源码仓库，默认 tktogether/node-warden |
 | --branch BRANCH | NW_BRANCH | 源码分支，默认 main |
 
-面板安装后还会在面板地址下的 bootstrap.sh 提供同一份脚本，例如 https://panel.example.com/warden/bootstrap.sh。安装结束时脚本会打印国内网络设置所需的命令；交互安装会询问是否现在执行，并逐项选择 APT 镜像、BBR 和 Docker 镜像。
+面板安装后还会在面板地址下提供 bootstrap.sh 和 toolbox.sh，例如 https://panel.example.com/warden/bootstrap.sh。安装结束时脚本会打印国内网络设置命令；面板“设置”页也会显示同一命令，并自动填入面板域名、Docker 镜像地址和 GitHub 镜像地址。交互安装会询问是否现在执行，并逐项选择 APT 镜像、BBR、Docker 镜像和 GitHub 镜像。
 
 ### 本地安装
 
@@ -149,11 +150,14 @@ update 在源码目录是 git 仓库时执行 git pull；源码来自压缩包�
 
 ~~~bash
 sudo bash bootstrap.sh cn-setup
-sudo bash bootstrap.sh cn-setup --docker-mirror https://docker.example.com
+sudo bash bootstrap.sh cn-setup --docker-mirror https://docker.example.com --git-mirror https://docker.example.com
+sudo bash bootstrap.sh cn-setup --no-git
 sudo bash bootstrap.sh cn-restore
 ~~~
 
-cn-setup 不带选项时会逐项询问：是否使用国内 APT 镜像、是否启用 BBR、是否设置 Docker 镜像加速、是否执行 apt-get update。也可以直接给出 --apt-mirror、--no-apt、--no-bbr、--docker-mirror、--no-apt-update 跳过询问。修改前把文件备份到 /var/backups/node-warden-cn/<时间>/，cn-restore 读取该备份恢复。
+cn-setup 不带选项时会逐项询问：是否使用国内 APT 镜像、是否启用 BBR、是否设置 Docker 镜像加速、是否设置 GitHub 镜像、是否执行 apt-get update。也可以直接给出 --apt-mirror、--no-apt、--no-bbr、--docker-mirror、--git-mirror、--no-git、--no-apt-update 跳过询问。
+
+--git-mirror 写入 /etc/gitconfig，把 https://github.com/、http://github.com/、git://github.com/、git@github.com: 和 ssh://git@github.com/ 改写为镜像地址。只影响使用系统 Git 配置的命令；SSH 地址会改为 HTTPS，访问私有仓库时需要提供 HTTPS 凭据。修改前把文件备份到 /var/backups/node-warden-cn/<时间>/，cn-restore 读取该备份恢复。
 
 所有命令都支持 --dry-run，只打印将执行的变更。
 
@@ -204,7 +208,7 @@ sudo bash toolbox.sh status
 sudo bash toolbox.sh bbr status
 ```
 
-单独运行 `toolbox.sh` 时，如果当前目录不是完整源码，脚本会自动获取源码后继续。详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
+单独运行 `toolbox.sh` 时，如果当前目录不是完整源码，脚本会按 GitHub 直连、指定代理、ghfast.top、gh-proxy.com、ghproxy.net 的顺序自动获取源码。`sudo bash toolbox.sh remote` 会列出当前可用下载通道。详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
 
 ## 服务清单
 

@@ -253,6 +253,36 @@ class PanelApp:
     def proxies(self) -> dict:
         return self._cached("proxies", 20, lambda: systems.proxy_overview(self.settings))
 
+    def cn_setup_info(self) -> dict:
+        public_url = self.settings.public_url.rstrip("/")
+        parsed = urlsplit(public_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+        domain = parsed.hostname or self.settings.node_host
+        docker_ready = any("crproxy" in item["id"].lower() for item in self.services)
+        git_ready = any("ghproxy" in item["id"].lower() for item in self.services)
+        opts = []
+        if origin and docker_ready:
+            opts.extend(["--docker-mirror", origin])
+        if origin and git_ready:
+            opts.extend(["--git-mirror", origin])
+        script_url = public_url + "/bootstrap.sh"
+        toolbox_url = public_url + "/toolbox.sh"
+        command = "sudo bash <(curl -fsSL %s) cn-setup" % script_url
+        if opts:
+            command += " " + " ".join(opts)
+        command += " --yes --non-interactive"
+        return {
+            "domain": domain,
+            "origin": origin,
+            "script_url": script_url,
+            "toolbox_url": toolbox_url,
+            "docker_mirror": origin if docker_ready else "",
+            "git_mirror": origin if git_ready else "",
+            "docker_ready": docker_ready,
+            "git_ready": git_ready,
+            "command": command,
+        }
+
     def panel_info(self) -> dict:
         return {
             "name": "Node Warden",
@@ -267,6 +297,7 @@ class PanelApp:
             "key_changed_at": self.key_changed_at,
             "session_ttl": self.settings.session_ttl,
             "backup_count": len(self.backups.list()),
+            "cn_setup": self.cn_setup_info(),
         }
 
     # ------------------------------------------------------------------
@@ -637,6 +668,9 @@ class Handler(BaseHTTPRequestHandler):
         if method in {"GET", "HEAD"} and rel == "/bootstrap.sh":
             self._serve_bootstrap()
             return
+        if method in {"GET", "HEAD"} and rel == "/toolbox.sh":
+            self._serve_toolbox()
+            return
         if method in {"GET", "HEAD"} and rel.startswith("/static/"):
             self._serve_static(rel[len("/static/"):])
             return
@@ -654,7 +688,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send_bytes(200, body, "text/html; charset=utf-8")
 
     def _serve_bootstrap(self) -> None:
-        path = Path(__file__).resolve().parent.parent / "bootstrap.sh"
+        self._serve_script("bootstrap.sh")
+
+    def _serve_toolbox(self) -> None:
+        self._serve_script("toolbox.sh")
+
+    def _serve_script(self, name: str) -> None:
+        path = Path(__file__).resolve().parent.parent / name
         try:
             body = path.read_bytes()
         except OSError:
