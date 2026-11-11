@@ -1,6 +1,6 @@
 # 部署
 
-本文说明 Node Warden 在单台 Linux 服务器上的安装、反向代理、升级和卸载。
+本文说明 Node Warden 在单台 Linux 服务器上的安装、网关、升级和卸载。
 
 ## 1. 前置条件
 
@@ -9,7 +9,7 @@
 - Python 3.10 或更高版本
 - curl、tar
 - Docker 仅在使用 kind 为 docker 的服务时需要
-- 可用的 HTTPS 证书和反向代理
+- 80/443 端口可用；bootstrap 会自动安装 nginx 和 certbot，也可以使用已有反向代理
 
 面板以 root 运行，并使用 Docker、systemctl、journalctl、certbot 和 sing-box 的固定命令。
 
@@ -45,32 +45,15 @@ sudo editor /tmp/services.json
 
 仓库根目录的 bootstrap.sh 同时管理面板、GitHub 下载代理和 Docker 镜像代理。
 
-在终端直接执行 install 会进入安装向导，依次询问安装组件、面板路径和面板域名或完整 URL。脚本会从已安装面板、certbot 证书和主机名中读取候选域名作为默认值。
+### 远程安装（推荐）
+
+新机器不需要先下载源码，直接执行下面这一行。脚本会进入安装向导，安装完成后打印访问地址。
 
 ~~~bash
-sudo bash bootstrap.sh install
+sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
 ~~~
 
-不需要交互时一次给出参数：
-
-~~~bash
-sudo bash bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
-sudo bash bootstrap.sh update
-sudo bash bootstrap.sh status
-sudo bash bootstrap.sh uninstall
-sudo bash bootstrap.sh cn-setup
-sudo bash bootstrap.sh cn-restore
-~~~
-
-默认安装面板（127.0.0.1:9090）、GitHub 下载代理（127.0.0.1:8082）和 Docker 镜像代理（127.0.0.1:8080 与修正层 127.0.0.1:8081）。只安装面板使用 --panel-only；首次安装的服务清单用 --services 指定；所有命令支持 --dry-run。
-
-未提供域名或 public URL 时，脚本尝试自动检测：有证书域名的机器优先使用该域名和 HTTPS；否则使用公网 IP 和 HTTP；无法检测公网地址时使用 http://127.0.0.1:9090/warden 并提示配置隧道或反向代理。指定域名且本机有 nginx 和 certbot 时，脚本自动申请证书；用 --no-auto-cert 关闭，或用 --email 指定 ACME 邮箱。Docker 网关不会由这个步骤自动配置。
-
-安装完成后脚本打印国内网络设置命令，地址优先使用 --cn-script-url，否则使用面板地址下的 bootstrap.sh。
-
-### 远程执行
-
-不下载源码时，可以直接执行远程 bootstrap.sh。脚本发现当前目录没有 app 和 static 后，会按顺序尝试 GitHub 直连、codeload、指定的 GitHub 代理、ghfast.top 和 gh-proxy.com。可用参数和环境变量覆盖地址。
+需要无人值守时，使用下面的完整参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试 GitHub 直连、codeload、指定的 GitHub 代理、ghfast.top 和 gh-proxy.com。可用参数和环境变量覆盖地址。
 
 ~~~bash
 sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
@@ -95,6 +78,7 @@ sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubuser
 | --domain DOMAIN | 只给域名，自动拼成 https://DOMAIN/warden |
 | --email EMAIL | ACME 证书邮箱 |
 | --no-auto-cert | 不自动申请证书 |
+| --no-gateway | 不安装或修改 nginx 网关，使用已有反向代理 |
 | --yes, -y | 跳过安装确认 |
 | --non-interactive | 不显示安装向导 |
 | --cn-script-url URL | 覆盖安装后打印的国内网络设置脚本地址 |
@@ -104,6 +88,31 @@ sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubuser
 代理默认只监听本机，需要由网关转发；不要让没有来源限制的代理直接暴露到公网。
 
 下一节是直接调用 install.sh 的安装方式，适合只安装面板或需要自定义目录的场景。
+
+### 本地安装
+
+在终端直接执行 install 会进入安装向导，依次询问安装组件、面板路径和面板域名或完整 URL。脚本会从已安装面板、certbot 证书和主机名中读取候选域名作为默认值。
+
+~~~bash
+sudo bash bootstrap.sh install
+~~~
+
+不需要交互时一次给出参数：
+
+~~~bash
+sudo bash bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
+sudo bash bootstrap.sh update
+sudo bash bootstrap.sh status
+sudo bash bootstrap.sh uninstall
+sudo bash bootstrap.sh cn-setup
+sudo bash bootstrap.sh cn-restore
+~~~
+
+默认安装面板（127.0.0.1:9090）、nginx 网关（80/443）、GitHub 下载代理（127.0.0.1:8082）和 Docker 镜像代理（127.0.0.1:8080 与修正层 127.0.0.1:8081）。只安装面板使用 --panel-only；首次安装的服务清单用 --services 指定；所有命令支持 --dry-run。
+
+未提供域名或 public URL 时，脚本尝试自动检测：有证书域名的机器优先使用该域名和 HTTPS；否则使用公网 IP 和 HTTP；无法检测公网地址时使用 http://127.0.0.1:9090/warden。安装脚本会在 80/443 空闲时安装并配置 nginx 网关；指定域名时自动申请证书，证书失败时回退 HTTP。已有反向代理时加 --no-gateway。
+
+安装完成后脚本打印国内网络设置命令，地址优先使用 --cn-script-url，否则使用面板地址下的 bootstrap.sh。
 
 ## 5. 直接安装面板
 
@@ -135,9 +144,9 @@ sudo bash deploy/install.sh \
 
 安装脚本会检查目录、生成访问密钥、写 panel.env、校验服务清单、安装 systemd unit，并在启动后请求 /api/session 做健康检查。
 
-## 6. 反向代理
+## 6. 自定义反向代理
 
-面板只监听 127.0.0.1:9090。nginx 示例：
+默认安装会自动配置 nginx 网关。使用 --no-gateway 或已有网关时，面板只监听 127.0.0.1:9090，需要自行转发：
 
 ~~~nginx
 location = /warden {

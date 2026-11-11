@@ -871,7 +871,7 @@ def run_service_action(service: dict, action: str, settings) -> dict:
         else:
             raise ValueError("docker 动作不受支持")
     elif kind == "systemd":
-        if action not in {"start", "stop", "restart"}:
+        if action not in {"start", "stop", "restart", "reload"}:
             raise ValueError("systemd 动作不受支持")
         args = [settings.systemctl_bin, action, target]
     elif kind == "singbox":

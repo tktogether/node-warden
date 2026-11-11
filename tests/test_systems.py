@@ -1,6 +1,9 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from app import systems
 
@@ -51,6 +54,17 @@ class AccessLogTests(unittest.TestCase):
         self.assertEqual(stub['accepts'], 10)
         self.assertEqual(stub['requests'], 20)
         self.assertEqual(stub['writing'], 1)
+
+
+class ActionTests(unittest.TestCase):
+    def test_systemd_reload_uses_systemctl_reload(self):
+        service = {'kind': 'systemd', 'target': 'nginx.service', 'actions': ['reload']}
+        completed = subprocess.CompletedProcess(['systemctl', 'reload', 'nginx.service'], 0, '', '')
+        with mock.patch.object(systems, 'run', return_value=completed) as run:
+            result = systems.run_service_action(service, 'reload', SimpleNamespace(systemctl_bin='systemctl'))
+        self.assertEqual(run.call_args.args[0], ['systemctl', 'reload', 'nginx.service'])
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['action'], 'reload')
 
 
 if __name__ == '__main__':

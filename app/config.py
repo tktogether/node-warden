@@ -27,7 +27,7 @@ DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 ALLOWED_KINDS = {"docker", "systemd", "singbox"}
 ALLOWED_ACTIONS = {
     "docker": {"restart", "start", "stop", "test", "reload"},
-    "systemd": {"restart", "start", "stop"},
+    "systemd": {"restart", "start", "stop", "reload"},
     "singbox": {"restart", "start", "stop", "check"},
 }
 ALLOWED_HEALTH = {"http", "tcp", "cert", "none"}

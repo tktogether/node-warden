@@ -12,7 +12,11 @@ NW_GITHUB_PROXY=${NW_GITHUB_PROXY:-}
 NW_ARCHIVE_URLS=${NW_ARCHIVE_URLS:-}
 VERSION=$(cat "$SRC_DIR/VERSION" 2>/dev/null || printf 'unknown')
 TMP_DIR=''
-cleanup() { if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi; }
+SERVICES_TMP=''
+cleanup() {
+  if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
+  if [ -n "$SERVICES_TMP" ]; then rm -f "$SERVICES_TMP"; fi
+}
 trap cleanup EXIT
 
 if [ $# -eq 0 ] && [ -r /dev/tty ]; then
@@ -59,6 +63,14 @@ ASSUME_YES=0
 AUTO_CERT=${NW_AUTO_CERT:-1}
 ACME_EMAIL=${NW_ACME_EMAIL:-}
 CN_SCRIPT_URL=${NW_CN_SCRIPT_URL:-}
+GATEWAY=${NW_GATEWAY:-1}
+GATEWAY_CONFIG=/etc/nginx/conf.d/node-warden.conf
+GATEWAY_ACME_ROOT=/var/www/node-warden-acme
+GATEWAY_BACKUP_DIR=/var/backups/node-warden-gateway
+CERT_READY=0
+GATEWAY_ATTEMPTED=0
+PUBLIC_URL_EXPLICIT=0
+if [ -n "$PUBLIC_URL" ]; then PUBLIC_URL_EXPLICIT=1; fi
 
 die() { printf '错误：%s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
@@ -81,7 +93,7 @@ Node Warden 统一入口
 用法：bash bootstrap.sh <命令> [选项]
 
 命令：
-  install      安装面板、GitHub 下载代理和 Docker 镜像代理
+  install      安装面板、GitHub 下载代理和 Docker 镜像代理；80/443 空闲时自动安装并配置 nginx，有域名时申请证书
   update       更新源码并升级已安装组件
   uninstall    停止并删除面板和代理组件
   status       显示组件状态和监听端口
@@ -95,6 +107,7 @@ Node Warden 统一入口
   --domain DOMAIN        面板域名；不提供 public URL 时自动拼成 https://DOMAIN/warden
   --email EMAIL          ACME 证书邮箱；留空时不提供邮箱
   --no-auto-cert         不自动申请证书
+  --no-gateway           不安装或修改 nginx 网关，由已有反向代理转发
   --yes, -y              非交互确认
   --non-interactive      不显示安装向导
   --cn-script-url URL    安装后提示的国内网络设置脚本地址
@@ -141,6 +154,7 @@ Node Warden 统一入口
 
 示例：
   sudo bash bootstrap.sh install
+  sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
   sudo bash bootstrap.sh install --public-url https://panel.example.com/warden --non-interactive
   sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --public-url https://panel.example.com/warden'
   sudo bash bootstrap.sh install --github-proxy https://proxy.example.com --public-url https://panel.example.com/warden
@@ -154,10 +168,11 @@ EOF
 parse_options() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --public-url) [ $# -ge 2 ] || die '--public-url 缺少值'; PUBLIC_URL=$2; shift 2 ;;
+      --public-url) [ $# -ge 2 ] || die '--public-url 缺少值'; PUBLIC_URL=$2; PUBLIC_URL_EXPLICIT=1; shift 2 ;;
       --domain) [ $# -ge 2 ] || die '--domain 缺少值'; CERT_DOMAIN=$2; shift 2 ;;
       --email) [ $# -ge 2 ] || die '--email 缺少值'; ACME_EMAIL=$2; shift 2 ;;
       --no-auto-cert) AUTO_CERT=0; shift ;;
+      --no-gateway) GATEWAY=0; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       --non-interactive) NON_INTERACTIVE=1; shift ;;
       --cn-script-url) [ $# -ge 2 ] || die '--cn-script-url 缺少值'; CN_SCRIPT_URL=$2; shift 2 ;;
@@ -319,9 +334,61 @@ ensure_source() {
 
 panel_installed() { [ -f "$PANEL_CONFIG_DIR/panel.env" ] && [ -f /etc/systemd/system/node-warden.service ]; }
 
+prepare_default_services() {
+  local example=$1 out python_bin candidate
+  [ -f "$example" ] || return 0
+  python_bin=''
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'pass' >/dev/null 2>&1; then
+      python_bin=$(command -v "$candidate")
+      break
+    fi
+  done
+  [ -n "$python_bin" ] || return 0
+  out=$(mktemp /tmp/node-warden-services.XXXXXX)
+  SERVICES_TMP=$out
+  "$python_bin" - "$example" "$out" "$PANEL" "$GHPROXY" "$DOCKER_PROXY" "$GATEWAY" "$GATEWAY_ATTEMPTED" <<'PY'
+import json
+import shutil
+import sys
+
+example, out, panel, ghproxy, docker_proxy, gateway, attempted = sys.argv[1:8]
+with open(example, encoding='utf-8') as handle:
+    data = json.load(handle)
+keep = {'gateway', 'certbot'}
+if docker_proxy == '1':
+    keep.update({'crproxy-local', 'crproxy-front'})
+if ghproxy == '1':
+    keep.add('ghproxy')
+services = [item for item in data.get('services', []) if str(item.get('id')) in keep]
+if gateway == '0' or attempted == '0':
+    services = [item for item in services if item.get('id') != 'gateway']
+if not shutil.which('certbot'):
+    services = [item for item in services if item.get('id') != 'certbot']
+backup_ids = {'panel-config', 'systemd-units'}
+if gateway == '1' and attempted == '1':
+    backup_ids.add('gateway-config')
+if docker_proxy == '1':
+    backup_ids.add('crproxy-front-config')
+if ghproxy == '1':
+    backup_ids.add('ghproxy')
+data['services'] = services
+data['backups'] = [item for item in data.get('backups', []) if item.get('id') in backup_ids]
+with open(out, 'w', encoding='utf-8') as handle:
+    json.dump(data, handle, ensure_ascii=False, indent=2)
+    handle.write('\n')
+PY
+  printf '%s
+' "$out"
+}
+
 install_panel() {
   [ "$PANEL" = 1 ] || return 0
   if [ "$DRY_RUN" = 0 ]; then source_dir_ready || die "找不到源码目录：$SRC_DIR"; fi
+  if [ -z "$SERVICES_FILE" ] && [ ! -f "$PANEL_CONFIG_DIR/services.json" ]; then
+    SERVICES_FILE=$(prepare_default_services "$SRC_DIR/examples/services.example.json")
+    SERVICES_TMP=$SERVICES_FILE
+  fi
   local args=(--base-path "$BASE_PATH" --install-dir "$PANEL_INSTALL_DIR" --config-dir "$PANEL_CONFIG_DIR" --data-dir "$PANEL_DATA_DIR")
   if [ -n "$PUBLIC_URL" ]; then args+=(--public-url "$PUBLIC_URL"); fi
   if [ -n "$CERT_DOMAIN" ]; then args+=(--cert-domain "$CERT_DOMAIN"); fi
@@ -359,6 +426,16 @@ add_panel_env() {
 configure_panel_proxy_env() {
   [ "$PANEL" = 1 ] || return 0
   [ -f "$PANEL_CONFIG_DIR/panel.env" ] || return 0
+  if [ "$GATEWAY_ATTEMPTED" = 1 ] && [ -n "$PUBLIC_URL" ]; then
+    local origin
+    origin=$(public_origin)
+    if [ -n "$origin" ]; then
+      add_panel_env PANEL_GATEWAY_URL "$origin/"
+      add_panel_env PANEL_GATEWAY_CONFIG "$GATEWAY_CONFIG"
+      add_panel_env PANEL_GATEWAY_ACCESS_LOG /var/log/nginx/access.log
+      add_panel_env PANEL_GATEWAY_STATUS_URL http://127.0.0.1:8083/__status
+    fi
+  fi
   if [ "$DOCKER_PROXY" = 1 ]; then
     add_panel_env PANEL_DOCKER_MIRROR_URL "http://127.0.0.1:${DOCKER_FRONT_PORT}/v2/"
   fi
@@ -510,6 +587,309 @@ install_docker_proxy() {
 }
 
 
+public_origin() {
+  local origin=$PUBLIC_URL
+  origin=$(printf '%s' "$origin" | sed 's:/*$::')
+  origin=$(printf '%s' "$origin" | sed "s|$BASE_PATH$||")
+  origin=$(printf '%s' "$origin" | sed 's:/*$::')
+  printf '%s\n' "$origin"
+}
+
+gateway_managed() { [ -f "$GATEWAY_CONFIG" ]; }
+
+port_in_use() {
+  local port=$1
+  if command -v ss >/dev/null 2>&1; then
+    [ -n "$(ss -ltnH "sport = :$port" 2>/dev/null || true)" ]
+    return
+  fi
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$port" <<'PY'
+import socket
+import sys
+
+sock = socket.socket()
+try:
+    sock.bind(('0.0.0.0', int(sys.argv[1])))
+except OSError:
+    raise SystemExit(1)
+finally:
+    sock.close()
+PY
+}
+
+ensure_nginx() {
+  if command -v nginx >/dev/null 2>&1; then
+    run systemctl enable nginx.service >/dev/null 2>&1 || true
+    run systemctl start nginx.service >/dev/null 2>&1 || true
+    return 0
+  fi
+  command -v apt-get >/dev/null 2>&1 || die '未找到 nginx，且当前系统没有 apt-get'
+  note '安装 nginx'
+  run apt-get update
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+  run systemctl enable --now nginx.service
+}
+
+ensure_certbot() {
+  command -v certbot >/dev/null 2>&1 && return 0
+  command -v apt-get >/dev/null 2>&1 || die '未找到 certbot，且当前系统没有 apt-get'
+  note '安装 certbot'
+  run apt-get update
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
+}
+
+install_cert_hook() {
+  local hook=/etc/letsencrypt/renewal-hooks/deploy/node-warden-reload-nginx.sh
+  [ "$DRY_RUN" = 1 ] && return 0
+  install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+  cat > "$hook" <<'EOF'
+#!/bin/sh
+nginx -t && systemctl reload nginx
+EOF
+  chmod 0755 "$hook"
+}
+
+ensure_certificate() {
+  [ "$AUTO_CERT" = 1 ] || return 1
+  [ -n "$CERT_DOMAIN" ] || return 1
+  is_domain "$CERT_DOMAIN" || return 1
+  local cert=/etc/letsencrypt/live/$CERT_DOMAIN/fullchain.pem
+  if [ -f "$cert" ] && cert_not_expired "$cert"; then
+    CERT_READY=1
+    install_cert_hook
+    return 0
+  fi
+  ensure_certbot
+  install -d -m 0755 "$GATEWAY_ACME_ROOT/.well-known/acme-challenge"
+  note "申请证书：$CERT_DOMAIN"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ certbot certonly --webroot -w %s -d %s\n' "$GATEWAY_ACME_ROOT" "$CERT_DOMAIN"
+    return 0
+  fi
+  if [ -n "$ACME_EMAIL" ]; then
+    if ! certbot certonly --webroot -w "$GATEWAY_ACME_ROOT" -d "$CERT_DOMAIN" --non-interactive --agree-tos --email "$ACME_EMAIL"; then
+      warn '证书申请失败，继续使用 HTTP。'
+      return 1
+    fi
+  else
+    if ! certbot certonly --webroot -w "$GATEWAY_ACME_ROOT" -d "$CERT_DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email; then
+      warn '证书申请失败，继续使用 HTTP。'
+      return 1
+    fi
+  fi
+  if [ ! -f "$cert" ]; then
+    warn '证书申请失败，继续使用 HTTP。'
+    return 1
+  fi
+  CERT_READY=1
+  install_cert_hook
+  systemctl enable --now certbot.timer >/dev/null 2>&1 || true
+  note '证书申请完成。'
+  return 0
+}
+
+gateway_proxy_locations() {
+  if [ "$PANEL" = 1 ]; then
+    cat <<EOF
+    location = $BASE_PATH {
+        return 301 $BASE_PATH/;
+    }
+    location $BASE_PATH/ {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 240s;
+        proxy_send_timeout 240s;
+        client_max_body_size 64k;
+    }
+EOF
+  fi
+  if [ "$DOCKER_PROXY" = 1 ]; then
+    cat <<EOF
+    location ~ ^/v2/.*/referrers/ {
+        default_type application/json;
+        return 200 '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}';
+    }
+    location /v2/ {
+        proxy_pass http://127.0.0.1:$DOCKER_FRONT_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+EOF
+  fi
+  if [ "$GHPROXY" = 1 ]; then
+    cat <<EOF
+    location = /__stats {
+        return 404;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:$GHPROXY_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+EOF
+  else
+    cat <<EOF
+    location / {
+        return 404;
+    }
+EOF
+  fi
+}
+
+write_gateway_config() {
+  local tls=$1 tmp cert server_name
+  cert=/etc/letsencrypt/live/$CERT_DOMAIN/fullchain.pem
+  server_name=$CERT_DOMAIN
+  [ -n "$server_name" ] || server_name=_
+  install -d -m 0755 "$(dirname "$GATEWAY_CONFIG")" "$GATEWAY_ACME_ROOT/.well-known/acme-challenge"
+  tmp=$(mktemp)
+  if [ "$tls" = 1 ] && [ -f "$cert" ]; then
+    cat > "$tmp" <<EOF
+server {
+    listen 80;
+    server_name $CERT_DOMAIN;
+    location ^~ /.well-known/acme-challenge/ {
+        root $GATEWAY_ACME_ROOT;
+    }
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name $CERT_DOMAIN;
+    ssl_certificate $cert;
+    ssl_certificate_key /etc/letsencrypt/live/$CERT_DOMAIN/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+EOF
+    gateway_proxy_locations >> "$tmp"
+    cat >> "$tmp" <<EOF
+}
+
+EOF
+  else
+    cat > "$tmp" <<EOF
+server {
+    listen 80;
+    server_name $server_name;
+    location ^~ /.well-known/acme-challenge/ {
+        root $GATEWAY_ACME_ROOT;
+    }
+
+EOF
+    gateway_proxy_locations >> "$tmp"
+    cat >> "$tmp" <<EOF
+}
+
+EOF
+  fi
+  cat >> "$tmp" <<EOF
+server {
+    listen 127.0.0.1:8083;
+    location = /__status {
+        stub_status;
+        allow 127.0.0.1;
+        deny all;
+    }
+}
+EOF
+  install -m 0644 "$tmp" "$GATEWAY_CONFIG"
+  rm -f "$tmp"
+}
+
+gateway_reload() {
+  nginx -t
+  systemctl reload nginx.service || systemctl restart nginx.service
+}
+
+install_gateway() {
+  [ "$GATEWAY" = 1 ] || { note '已跳过自动网关。'; return 0; }
+  [ "$PANEL" = 1 ] || [ "$GHPROXY" = 1 ] || [ "$DOCKER_PROXY" = 1 ] || return 0
+  if [ "$BASE_PATH" = / ]; then
+    warn '基础路径为 / 时不自动配置网关；请手动配置反向代理。'
+    [ "$PUBLIC_URL_EXPLICIT" = 1 ] || PUBLIC_URL="http://127.0.0.1:9090/"
+    return 0
+  fi
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ install nginx and certbot if missing\n'
+    printf '+ write %s\n' "$GATEWAY_CONFIG"
+    return 0
+  fi
+  if gateway_managed; then
+    GATEWAY_ATTEMPTED=1
+  elif command -v nginx >/dev/null 2>&1 && systemctl is-active --quiet nginx.service; then
+    GATEWAY_ATTEMPTED=1
+  elif port_in_use 80 || port_in_use 443; then
+    if [ "$PUBLIC_URL_EXPLICIT" = 1 ] || panel_installed; then
+      note '80 或 443 已被其他服务占用，保留已有反向代理配置。'
+      return 0
+    fi
+    warn '80 或 443 已被其他服务占用，跳过自动网关。'
+    warn "请用 --public-url 指定已有反向代理地址，或改用 --no-gateway；当前回退为 $BASE_PATH 的本机地址。"
+    PUBLIC_URL="http://127.0.0.1:9090$BASE_PATH"
+    return 0
+  else
+    GATEWAY_ATTEMPTED=1
+  fi
+  ensure_nginx
+  install -d -m 0700 "$GATEWAY_BACKUP_DIR"
+  if [ -f "$GATEWAY_CONFIG" ]; then
+    cp -a "$GATEWAY_CONFIG" "$GATEWAY_BACKUP_DIR/node-warden.conf.$(date +%Y%m%d-%H%M%S)"
+  fi
+  write_gateway_config 0
+  gateway_reload || die 'nginx 配置检查失败，已停止安装；请查看 nginx -t 输出。'
+  if [ -f "/etc/letsencrypt/live/$CERT_DOMAIN/fullchain.pem" ]; then
+    CERT_READY=1
+  fi
+  if [ "$PANEL" = 1 ] && is_domain "$CERT_DOMAIN" && [ "$AUTO_CERT" = 1 ]; then
+    case "$PUBLIC_URL" in
+      http://*) note '面板地址为 HTTP，跳过证书申请。' ;;
+      *)
+        if ensure_certificate; then
+          write_gateway_config 1
+          gateway_reload || die 'nginx HTTPS 配置检查失败。'
+        elif [ "$PUBLIC_URL_EXPLICIT" = 1 ]; then
+          die "证书申请失败，无法使用 https://$CERT_DOMAIN；请检查域名解析，或改用 --public-url http://$CERT_DOMAIN$BASE_PATH。"
+        fi
+        ;;
+    esac
+  fi
+  if [ "$CERT_READY" = 0 ] && [ -n "$CERT_DOMAIN" ] && is_domain "$CERT_DOMAIN" && [ "$PUBLIC_URL_EXPLICIT" = 0 ]; then
+    PUBLIC_URL="http://$CERT_DOMAIN$BASE_PATH"
+    warn "证书不可用，面板地址改为：$PUBLIC_URL"
+  fi
+  note 'nginx 网关已配置。'
+}
+
+uninstall_gateway() {
+  gateway_managed || return 0
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ remove %s and reload nginx\n' "$GATEWAY_CONFIG"
+    return 0
+  fi
+  run rm -f "$GATEWAY_CONFIG"
+  if command -v nginx >/dev/null 2>&1; then
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx.service >/dev/null 2>&1 || true
+  fi
+}
+
 uninstall_panel() {
   [ "$PANEL" = 1 ] || return 0
   if [ "$DRY_RUN" = 1 ]; then
@@ -562,6 +942,11 @@ show_status() {
     systemctl status node-warden.service --no-pager -n 3 2>/dev/null || true
   else
     note '面板：未安装'
+  fi
+  if gateway_managed; then
+    printf '网关：%s  %s\n' "$(systemctl is-active nginx.service 2>/dev/null || true)" "$GATEWAY_CONFIG"
+  else
+    note '网关：未安装（使用已有反向代理）'
   fi
   local gh_unit=''
   for gh_unit in node-warden-ghproxy.service ghproxy.service; do
@@ -818,7 +1203,11 @@ resolve_panel_url() {
   fi
   if [ -z "$NODE_HOST" ] && [ -n "$CERT_DOMAIN" ]; then NODE_HOST=$CERT_DOMAIN; fi
   if [ -z "$PUBLIC_URL" ] && [ -n "$CERT_DOMAIN" ]; then
-    PUBLIC_URL="https://${CERT_DOMAIN}${BASE_PATH}"
+    if is_ipv4 "$CERT_DOMAIN"; then
+      PUBLIC_URL="http://${CERT_DOMAIN}${BASE_PATH}"
+    else
+      PUBLIC_URL="https://${CERT_DOMAIN}${BASE_PATH}"
+    fi
   fi
 }
 
@@ -838,6 +1227,7 @@ is_ipv4() {
 }
 
 is_domain() {
+  is_ipv4 "$1" && return 1
   case "$1" in
     *.*) ;;
     *) return 1 ;;
@@ -940,49 +1330,13 @@ auto_configure_public_url() {
     CERT_DOMAIN=$ip
     PUBLIC_URL="http://${ip}${BASE_PATH}"
     warn "未检测到域名，使用 HTTP 地址：${PUBLIC_URL}"
-    warn '需要在 80 端口提供反向代理，或改用 --public-url / --domain 指定域名。'
+    warn '安装脚本会自动安装并配置 nginx 网关；也可以在 80 端口使用已有反向代理。'
     return 0
   fi
   CERT_DOMAIN=127.0.0.1
   PUBLIC_URL="http://127.0.0.1:9090${BASE_PATH}"
   warn "未检测到域名和公网地址，使用本机地址：${PUBLIC_URL}"
-  warn '请通过 SSH 隧道访问，或配置反向代理。'
-}
-
-ensure_certificate() {
-  [ "$AUTO_CERT" = 1 ] || return 0
-  [ -n "$CERT_DOMAIN" ] || return 0
-  if ! is_domain "$CERT_DOMAIN"; then
-    note "跳过自动证书：未提供域名（${CERT_DOMAIN}）。"
-    return 0
-  fi
-  if [ -f "/etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem" ]; then
-    return 0
-  fi
-  if ! command -v certbot >/dev/null 2>&1; then
-    warn '未找到 certbot，跳过自动证书申请。'
-    return 0
-  fi
-  if ! command -v nginx >/dev/null 2>&1; then
-    warn '未找到 nginx，跳过自动证书申请；请先配置 80 端口反向代理。'
-    return 0
-  fi
-  local args=(certonly --nginx -d "$CERT_DOMAIN" --non-interactive --agree-tos)
-  if [ -n "$ACME_EMAIL" ]; then
-    args+=(--email "$ACME_EMAIL")
-  else
-    args+=(--register-unsafely-without-email)
-  fi
-  note "申请证书：${CERT_DOMAIN}"
-  if [ "$DRY_RUN" = 1 ]; then
-    printf '+ certbot %s\n' "${args[*]}"
-    return 0
-  fi
-  if ! certbot "${args[@]}"; then
-    warn '证书申请失败，继续安装；可稍后手动运行 certbot。'
-    return 0
-  fi
-  note '证书申请完成。'
+  warn '请通过 SSH 隧道访问，或在 80 端口配置反向代理。'
 }
 
 tty_available() { ( : < /dev/tty ) >/dev/null 2>&1; }
@@ -1096,8 +1450,9 @@ main() {
       if [ "$PANEL" = 1 ]; then
         if [ "$DRY_RUN" = 0 ]; then auto_configure_public_url; fi
         resolve_panel_url
-        ensure_certificate
       fi
+      install_gateway
+      resolve_panel_url
       install_panel
       install_ghproxy
       install_docker_proxy
@@ -1111,7 +1466,9 @@ main() {
       sync_source
       if [ "$DRY_RUN" = 0 ]; then source_dir_ready || die "找不到源码目录：$SRC_DIR"; fi
       resolve_panel_url
-      if [ "$PANEL" = 1 ] && [ "$DRY_RUN" = 0 ]; then auto_configure_public_url; resolve_panel_url; ensure_certificate; fi
+      if [ "$PANEL" = 1 ] && [ "$DRY_RUN" = 0 ]; then auto_configure_public_url; resolve_panel_url; fi
+      install_gateway
+      resolve_panel_url
       install_panel
       install_ghproxy
       install_docker_proxy
@@ -1121,6 +1478,7 @@ main() {
     uninstall)
       require_root
       need_linux
+      uninstall_gateway
       uninstall_docker_proxy
       uninstall_ghproxy
       uninstall_panel

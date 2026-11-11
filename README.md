@@ -2,7 +2,7 @@
 
 Node Warden 是运行在单台 Linux 服务器上的服务管理控制台。它管理 Docker 容器、systemd 服务、sing-box、TLS 证书和配置备份，并显示主机资源、服务状态、可用率和最近操作。
 
-面板本身只监听 127.0.0.1，由服务器上已有的 HTTPS 反向代理对外提供访问。
+面板本身只监听 127.0.0.1。bootstrap 默认安装并配置 nginx 网关，也可以复用服务器上已有的反向代理。
 
 ## 功能
 
@@ -20,7 +20,7 @@ Node Warden 是运行在单台 Linux 服务器上的服务管理控制台。它�
 ## 安全模型
 
 - 面板以 root 运行，因为需要调用 Docker、systemctl、journalctl 和 certbot。
-- 默认监听 127.0.0.1:9090，不应直接暴露到公网；公网入口应由 nginx 或 Caddy 提供 HTTPS。
+- 默认监听 127.0.0.1:9090，不应直接暴露到公网；bootstrap 默认安装 nginx 网关并提供 HTTPS，也可使用已有反向代理。
 - 访问密钥只接受一个；校验使用 /etc/node-warden/panel.env 中的 SHA-256 摘要，/var/lib/node-warden/access-key 另存一份权限为 600 的 root-only 恢复副本。
 - 会话 cookie 使用 HMAC 签名，默认 12 小时有效；所有写操作还需要 CSRF 请求头。
 - 登录失败按客户端 IP 限速；反向代理必须传递 X-Real-IP。
@@ -33,58 +33,21 @@ Node Warden 是运行在单台 Linux 服务器上的服务管理控制台。它�
 - Python 3.10 或更高版本
 - systemd
 - curl、tar
+- nginx、certbot（未安装时由 bootstrap 通过 apt 安装）
+- 80/443 端口可用（使用已有反向代理时可不占用）
 - Docker（仅在使用 Docker 服务时需要）
 
 ## 统一入口
 
-仓库根目录的 bootstrap.sh 是唯一入口，负责面板、GitHub 下载代理和 Docker 镜像代理的安装、更新、卸载、状态检查和国内机设置。
-
-### 安装
-
-在终端直接执行 install 会进入安装向导。向导依次询问安装组件、面板路径，以及面板域名或完整 URL。脚本会尝试从已安装面板、certbot 证书和主机名中读取域名，作为向导的默认值。
-
-~~~bash
-sudo bash bootstrap.sh install
-~~~
-
-不需要交互时，可以一次给出全部参数：
-
-~~~bash
-sudo bash bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
-~~~
-
-没有域名时，脚本使用公网 IP 和 HTTP 地址；无法检测公网地址时，使用 http://127.0.0.1:9090/warden，需要通过 SSH 隧道或反向代理访问。指定域名且本机已安装 nginx 和 certbot 时，脚本自动为域名申请证书；不需要自动申请时加 --no-auto-cert。
-
-常用安装参数：
-
-| 参数 | 说明 |
-| --- | --- |
-| --public-url URL | 面板完整访问地址，路径必须等于面板路径 |
-| --domain DOMAIN | 只给域名，脚本自动拼成 https://DOMAIN/warden |
-| --email EMAIL | ACME 证书邮箱 |
-| --no-auto-cert | 不自动申请证书 |
-| --yes, -y | 跳过安装确认 |
-| --non-interactive | 不显示安装向导 |
-
-默认行为：
-
-- 安装 Node Warden，监听 127.0.0.1:9090；
-- 安装 GitHub 下载代理，监听 127.0.0.1:8082；
-- 安装 Docker 镜像代理，监听 127.0.0.1:8080 和修正层 127.0.0.1:8081；
-- 若未安装 Docker，尝试用 apt-get 安装 docker.io；不需要时加 --skip-docker-install；
-- 显示安装后的组件状态。
-
-如果只安装面板：
-
-~~~bash
-sudo bash bootstrap.sh install --panel-only --public-url https://panel.example.com/warden
-~~~
-
-服务清单可用 --services FILE 指定。首次安装会复制为 /etc/node-warden/services.json；后续升级保留已有清单。
-
 ### 远程安装
 
-不下载源码时，可以直接从远程地址执行 bootstrap.sh。脚本发现当前目录没有 app 和 static 后，会按顺序尝试下载源码压缩包：
+新机器不需要先下载源码。直接执行下面这一行，脚本会进入安装向导，安装完成后打印访问地址：
+
+~~~bash
+sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
+~~~
+
+需要无人值守时，在命令后加安装参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试下载源码压缩包：
 
 1. 环境变量或参数指定的地址；
 2. GitHub 直连；
@@ -124,6 +87,51 @@ sudo NW_ARCHIVE_URLS="https://mirror.example.com/node-warden.tar.gz https://gith
 
 面板安装后还会在面板地址下的 bootstrap.sh 提供同一份脚本，例如 https://panel.example.com/warden/bootstrap.sh。安装结束时脚本会打印国内网络设置所需的命令；交互安装还会询问是否现在执行。
 
+### 本地安装
+
+在终端直接执行 install 会进入安装向导。向导依次询问安装组件、面板路径，以及面板域名或完整 URL。脚本会尝试从已安装面板、certbot 证书和主机名中读取域名，作为向导的默认值。
+
+~~~bash
+sudo bash bootstrap.sh install
+~~~
+
+不需要交互时，可以一次给出全部参数：
+
+~~~bash
+sudo bash bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
+~~~
+
+没有域名时，脚本使用公网 IP 和 HTTP 地址；无法检测公网地址时，使用 http://127.0.0.1:9090/warden，需要通过 SSH 隧道访问。安装脚本会在 80/443 空闲时安装并配置 nginx 网关；指定域名时自动申请证书，证书失败时回退 HTTP。已有反向代理时加 --no-gateway。
+
+常用安装参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| --public-url URL | 面板完整访问地址，路径必须等于面板路径 |
+| --domain DOMAIN | 只给域名，脚本自动拼成 https://DOMAIN/warden |
+| --email EMAIL | ACME 证书邮箱 |
+| --no-auto-cert | 不自动申请证书 |
+| --no-gateway | 不安装或修改 nginx 网关，使用已有反向代理 |
+| --yes, -y | 跳过安装确认 |
+| --non-interactive | 不显示安装向导 |
+
+默认行为：
+
+- 安装 Node Warden，监听 127.0.0.1:9090；
+- 安装并配置 nginx 网关（80/443），指定域名时自动申请证书；
+- 安装 GitHub 下载代理，监听 127.0.0.1:8082；
+- 安装 Docker 镜像代理，监听 127.0.0.1:8080 和修正层 127.0.0.1:8081；
+- 若未安装 Docker，尝试用 apt-get 安装 docker.io；不需要时加 --skip-docker-install；
+- 显示安装后的组件状态。
+
+如果只安装面板：
+
+~~~bash
+sudo bash bootstrap.sh install --panel-only --public-url https://panel.example.com/warden
+~~~
+
+服务清单可用 --services FILE 指定。首次安装会复制为 /etc/node-warden/services.json；后续升级保留已有清单。
+
 ### 日常命令
 
 ~~~bash
@@ -148,9 +156,9 @@ cn-setup 会修改 APT 源（默认 mirrors.aliyun.com）、启用 BBR，并在�
 
 所有命令都支持 --dry-run，只打印将执行的变更。
 
-### 反向代理
+### 自定义反向代理
 
-面板和代理都只监听 127.0.0.1，必须由已有的 HTTPS 网关转发。nginx 示例：
+使用 --no-gateway 时，面板和代理只监听 127.0.0.1，需要由已有网关转发。nginx 示例：
 
 ~~~nginx
 location = /warden {
@@ -187,14 +195,13 @@ GitHub 下载代理和 Docker 镜像代理的对外路由由网关配置决定�
     {
       "id": "gateway",
       "name": "网关",
-      "kind": "docker",
-      "target": "gateway",
+      "kind": "systemd",
+      "target": "nginx.service",
       "description": "对外 nginx 网关",
       "order": 10,
-      "nginx": true,
-      "actions": ["restart", "start", "stop", "test", "reload"],
-      "health": {"type": "http", "url": "https://127.0.0.1/", "expect": [403], "insecure": true},
-      "logs": [{"id": "docker", "type": "docker", "label": "容器日志"}]
+      "actions": ["restart", "start", "stop"],
+      "health": {"type": "http", "url": "http://127.0.0.1:8083/__status", "expect": [200]},
+      "logs": [{"id": "journal", "type": "journal", "label": "服务日志"}]
     }
   ],
   "backups": [
@@ -261,6 +268,9 @@ backups 是顶层数组，每项包含 id、label 和 path。path 必须是绝�
 | PANEL_NODE_HOST | 证书域名 | sing-box 分享链接中使用的主机名 |
 | PANEL_DOCKER_MIRROR_URL | https://证书域名/v2/ | Docker 代理探测地址 |
 | PANEL_GHPROXY_STATS_URL | http://127.0.0.1:8082/__stats | GitHub 代理统计地址 |
+| PANEL_GATEWAY_URL | https://证书域名/ | 网关对外根地址，用于代理探测 |
+| PANEL_GATEWAY_CONFIG | /root/gateway/nginx.conf | 网关配置文件路径 |
+| PANEL_GATEWAY_ACCESS_LOG | /root/gateway/logs/access.log | 网关访问日志路径 |
 | PANEL_GATEWAY_STATUS_URL | http://127.0.0.1:8083/__status | 网关 stub_status 地址 |
 | PANEL_ALERT_WEBHOOK | 空 | 可选告警 webhook |
 
