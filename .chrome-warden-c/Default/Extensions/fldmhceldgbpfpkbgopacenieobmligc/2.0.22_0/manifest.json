@@ -1,0 +1,46 @@
+{
+   "action": {
+      "default_title": "__MSG_actionTitle__"
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "commands": {
+      "_execute_action": {
+         "suggested_key": {
+            "default": "Ctrl+Shift+K",
+            "mac": "Command+Shift+K"
+         }
+      }
+   },
+   "content_scripts": [ {
+      "all_frames": false,
+      "js": [ "content-scripts/record.js", "content-scripts/selection.js" ],
+      "matches": [ "\u003Call_urls>" ],
+      "run_at": "document_idle"
+   } ],
+   "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://*:* wss://*:* http://*:* https://*:* https://www.kimi.com https://www.kimi.ai https://gator.volces.com https://agent-gw.kimi.com;"
+   },
+   "default_locale": "en",
+   "description": "__MSG_description__",
+   "host_permissions": [ "\u003Call_urls>" ],
+   "icons": {
+      "128": "icon/128.png",
+      "16": "icon/16.png",
+      "32": "icon/32.png",
+      "48": "icon/48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkqzXcTrb4GJDlyzo9yxYmr7TnTLUjBEo/ko+iPRNETfrXSSg35HUV8iWFUyup3KlxFE8n49u5ZhycvRLpimdLnOp5raH7nosALlkQ/YqwJ/aMEipeZSHsAc7KPL4peTfgX2RGWn5wGrm4RyjzN8ZWH7ctJhiBsPPU/JdYLRVHnSaqEuz34qPJq0laXGNUM5Rgr2rTBQ+VDE08S9ZsQRsVZf1Gr3kcqWpuYNDHBUZAy6UaM5p4UveXH/qYXXtNkf9alikLkiYZQrgVSBiTvqyMCKJk8zdiK9W5mhkjZbkaL+nG7lsyYiq923Scx5JKUeDo3aX1b/5EPnOgEtHH3QJsQIDAQAB",
+   "manifest_version": 3,
+   "name": "Kimi",
+   "options_ui": {
+      "page": "options.html"
+   },
+   "permissions": [ "tabs", "activeTab", "debugger", "storage", "alarms", "tabGroups", "windows", "sidePanel", "contextMenus", "notifications", "favicon", "webNavigation", "webRequest", "scripting", "unlimitedStorage" ],
+   "side_panel": {
+      "default_path": "sidepanel.html"
+   },
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "2.0.22"
+}

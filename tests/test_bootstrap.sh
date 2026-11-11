@@ -113,6 +113,9 @@ if 'reload' not in gateway.get('actions', []):
     raise SystemExit('gateway reload action missing')
 if not gateway.get('nginx'):
     raise SystemExit('gateway nginx flag missing')
+ghproxy = next(item for item in data['services'] if item['id'] == 'ghproxy')
+if ghproxy.get('health', {}).get('url') != 'http://127.0.0.1:8082/__stats':
+    raise SystemExit('ghproxy health URL missing')
 PY
   rm -f "$out"
 )

@@ -100,9 +100,9 @@
       ],
       "health": {
         "type": "http",
-        "url": "http://127.0.0.1:8082/",
+        "url": "http://127.0.0.1:8082/__stats",
         "expect": [
-          403
+          200
         ]
       },
       "logs": [
