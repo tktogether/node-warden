@@ -82,7 +82,7 @@ sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubuser
 | --yes, -y | 跳过安装确认 |
 | --non-interactive | 不显示安装向导 |
 | --cn-setup | 安装完成后按当前国内网络选项执行；没有选项时使用默认值 |
-| --git-mirror URL | 国内机设置时把 GitHub 的 HTTP/HTTPS/git 地址改写为镜像地址 |
+| --git-mirror URL | 国内机设置时把 GitHub 的 HTTP/HTTPS/git:// 和 SSH 地址改写为镜像地址 |
 | --no-git | 国内机设置时不修改 Git 配置 |
 | --cn-script-url URL | 覆盖安装后打印的国内网络设置脚本地址 |
 
