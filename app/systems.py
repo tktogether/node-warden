@@ -774,7 +774,7 @@ def singbox_summary(settings) -> dict:
     if main is None:
         return {"installed": installed, "version": version, "files": files,
                 "inbounds": [], "outbounds": [], "check": None, "config_ok": False,
-                "error": "无法读取 sing-box 配置"}
+                "error": "" if not settings.singbox_config.exists() else "无法读取 sing-box 配置"}
     combined = _combined_config(settings, main)
     check = None
     if installed:

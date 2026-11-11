@@ -67,6 +67,19 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(result['action'], 'reload')
 
 
+class SingBoxTests(unittest.TestCase):
+    def test_absent_singbox_has_no_error(self):
+        settings = SimpleNamespace(
+            singbox_bin='/nonexistent/node-warden-sing-box',
+            singbox_config=Path('/nonexistent/node-warden/config.json'),
+            singbox_conf_dir=Path('/nonexistent/node-warden/conf'),
+        )
+        result = systems.singbox_summary(settings)
+        self.assertFalse(result['installed'])
+        self.assertEqual(result['error'], '')
+        self.assertEqual(result['inbounds'], [])
+
+
 class ProbeTests(unittest.TestCase):
     def test_http_400_is_reachable(self):
         result = {'ok': False, 'status': 400, 'latency_ms': 12, 'bytes': 0, 'text': '', 'error': 'HTTP Error 400'}
