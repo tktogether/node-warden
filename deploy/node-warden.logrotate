@@ -1,0 +1,16 @@
+# Node Warden audit log rotation.
+# Installed as /etc/logrotate.d/node-warden by deploy/install.sh.
+# The audit writer opens and closes the file per record, so create is safe
+# and copytruncate is not needed.
+
+@DATA_DIR@/audit.log {
+    su root root
+    daily
+    size 5M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0600 root root
+}

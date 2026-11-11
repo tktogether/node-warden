@@ -1,0 +1,219 @@
+{
+  "services": [
+    {
+      "id": "gateway",
+      "name": "网关",
+      "kind": "docker",
+      "target": "gateway",
+      "description": "对外提供 80/443 的 nginx 网关。",
+      "order": 10,
+      "nginx": true,
+      "actions": [
+        "restart",
+        "start",
+        "stop",
+        "test",
+        "reload"
+      ],
+      "health": {
+        "type": "http",
+        "url": "https://127.0.0.1/",
+        "expect": [
+          403
+        ],
+        "insecure": true
+      },
+      "logs": [
+        {
+          "id": "docker",
+          "type": "docker",
+          "label": "容器日志"
+        }
+      ]
+    },
+    {
+      "id": "crproxy-local",
+      "name": "Docker 镜像代理",
+      "kind": "docker",
+      "target": "crproxy-local",
+      "description": "本地 crproxy，监听 127.0.0.1:8080。",
+      "order": 20,
+      "actions": [
+        "restart",
+        "start",
+        "stop"
+      ],
+      "health": {
+        "type": "http",
+        "url": "http://127.0.0.1:8080/v2/",
+        "expect": [
+          200
+        ]
+      },
+      "logs": [
+        {
+          "id": "docker",
+          "type": "docker",
+          "label": "容器日志"
+        }
+      ]
+    },
+    {
+      "id": "crproxy-front",
+      "name": "镜像代理前置",
+      "kind": "docker",
+      "target": "crproxy-front",
+      "description": "处理 OCI referrers 请求并转发到 crproxy。",
+      "order": 30,
+      "nginx": true,
+      "actions": [
+        "restart",
+        "start",
+        "stop",
+        "test",
+        "reload"
+      ],
+      "health": {
+        "type": "http",
+        "url": "http://127.0.0.1:8081/v2/",
+        "expect": [
+          200
+        ]
+      },
+      "logs": [
+        {
+          "id": "docker",
+          "type": "docker",
+          "label": "容器日志"
+        }
+      ]
+    },
+    {
+      "id": "ghproxy",
+      "name": "GitHub 下载代理",
+      "kind": "systemd",
+      "target": "ghproxy.service",
+      "description": "为 GitHub release、raw 和 clone 提供下载代理。",
+      "order": 40,
+      "actions": [
+        "restart",
+        "start",
+        "stop"
+      ],
+      "health": {
+        "type": "http",
+        "url": "http://127.0.0.1:8082/",
+        "expect": [
+          403
+        ]
+      },
+      "logs": [
+        {
+          "id": "journal",
+          "type": "journal",
+          "label": "服务日志"
+        }
+      ]
+    },
+    {
+      "id": "sing-box",
+      "name": "sing-box",
+      "kind": "singbox",
+      "target": "sing-box.service",
+      "description": "sing-box 服务，包含 Socks、VLESS 和 Hysteria2 入站。",
+      "order": 50,
+      "actions": [
+        "restart",
+        "start",
+        "stop",
+        "check"
+      ],
+      "health": {
+        "type": "tcp",
+        "targets": [
+          {
+            "host": "127.0.0.1",
+            "port": 21621
+          },
+          {
+            "host": "127.0.0.1",
+            "port": 6546
+          }
+        ]
+      },
+      "logs": [
+        {
+          "id": "journal",
+          "type": "journal",
+          "label": "服务日志"
+        }
+      ]
+    },
+    {
+      "id": "certbot",
+      "name": "证书续期定时器",
+      "kind": "systemd",
+      "target": "certbot.timer",
+      "description": "Let's Encrypt 证书续期定时器。",
+      "order": 60,
+      "actions": [
+        "start",
+        "stop",
+        "restart"
+      ],
+      "health": {
+        "type": "none"
+      },
+      "logs": [
+        {
+          "id": "letsencrypt",
+          "type": "file",
+          "path": "/var/log/letsencrypt/letsencrypt.log",
+          "label": "certbot 日志"
+        }
+      ]
+    }
+  ],
+  "backups": [
+    {
+      "id": "panel-config",
+      "label": "Node Warden 配置",
+      "path": "/etc/node-warden"
+    },
+    {
+      "id": "gateway-config",
+      "label": "网关配置",
+      "path": "/root/gateway/nginx.conf"
+    },
+    {
+      "id": "crproxy-front-config",
+      "label": "镜像代理前置配置",
+      "path": "/root/crproxy-front/nginx.conf"
+    },
+    {
+      "id": "compose",
+      "label": "Compose 文件",
+      "path": "/root/docker-compose.yml"
+    },
+    {
+      "id": "ghproxy",
+      "label": "ghproxy 文件",
+      "path": "/root/ghproxy"
+    },
+    {
+      "id": "singbox-config",
+      "label": "sing-box 主配置",
+      "path": "/etc/sing-box/config.json"
+    },
+    {
+      "id": "singbox-conf",
+      "label": "sing-box 入站配置",
+      "path": "/etc/sing-box/conf"
+    },
+    {
+      "id": "letsencrypt",
+      "label": "Let's Encrypt 证书",
+      "path": "/etc/letsencrypt"
+    }
+  ]
+}

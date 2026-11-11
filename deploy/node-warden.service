@@ -1,0 +1,28 @@
+[Unit]
+Description=Node Warden server management console
+Documentation=file:/opt/node-warden/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/node-warden
+EnvironmentFile=/etc/node-warden/panel.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m app.server
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=false
+ProtectSystem=false
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=node-warden
+
+[Install]
+WantedBy=multi-user.target
