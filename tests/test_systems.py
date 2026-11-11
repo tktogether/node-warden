@@ -67,5 +67,15 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(result['action'], 'reload')
 
 
+class ProbeTests(unittest.TestCase):
+    def test_http_400_is_reachable(self):
+        result = {'ok': False, 'status': 400, 'latency_ms': 12, 'bytes': 0, 'text': '', 'error': 'HTTP Error 400'}
+        with mock.patch.object(systems, '_open_url', return_value=result):
+            probe = systems._probe_url('https://gateway.example/')
+        self.assertTrue(probe['ok'])
+        self.assertEqual(probe['status'], 400)
+        self.assertEqual(probe['error'], '')
+
+
 if __name__ == '__main__':
     unittest.main()

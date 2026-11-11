@@ -971,7 +971,7 @@ def _open_url(url: str, timeout: float = 8, headers: dict | None = None, limit: 
 def _probe_url(url: str, timeout: float = 8, headers: dict | None = None, read_bytes: int = 4096) -> dict:
     result = _open_url(url, timeout=timeout, headers=headers, limit=read_bytes)
     status = result.get("status")
-    reachable = status in {200, 206, 301, 302, 401, 403}
+    reachable = status in {200, 206, 301, 302, 400, 401, 403}
     return {
         "ok": reachable,
         "status": status,
