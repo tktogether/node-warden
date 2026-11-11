@@ -41,8 +41,9 @@ module_run() {
       exec bash "$BOOTSTRAP" "$action" "$@"
       ;;
     remote)
-      printf '远程安装命令：\n'
-      printf "  sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'\n"
+      printf '远程运行命令：\n'
+      printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)\n'
+      printf '  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh) install\n'
       ;;
     help|--help|-h)
       module_list

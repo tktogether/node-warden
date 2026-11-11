@@ -4,22 +4,27 @@
 
 ## 运行
 
-在仓库根目录执行：
+新机器直接运行，不需要手工下载源码：
 
 ```bash
-sudo bash toolbox.sh
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
 ```
 
-脚本会列出功能目录；选择编号进入对应菜单。也可以直接执行子命令：
+脚本会自动获取源码并显示统一菜单。菜单包含安装、更新、状态、卸载、常用工具和 BBR；选择“一键安装或重新配置 Node Warden”后会继续执行安装向导。
+
+也可以直接执行操作：
 
 ```bash
-bash toolbox.sh list
+sudo bash toolbox.sh install
+sudo bash toolbox.sh install --public-url https://panel.example.com/warden
+sudo bash toolbox.sh update
+sudo bash toolbox.sh status
 bash toolbox.sh common system-info
-bash toolbox.sh node-warden status
 sudo bash toolbox.sh bbr status
+bash toolbox.sh remote
 ```
 
-`common` 下的读取类工具通常不需要 root；`node-warden` 安装、`bbr install`、`bbr rollback` 和 `bbr benchmark` 需要 root。
+`common` 下的读取类工具通常不需要 root；安装、更新、卸载、`bbr install`、`bbr rollback` 和 `bbr benchmark` 需要 root。
 
 ## 功能目录
 
@@ -28,6 +33,19 @@ sudo bash toolbox.sh bbr status
 | common | 系统信息、网络测试、镜像测速、DNS、端口、证书、磁盘和 Docker 状态 |
 | node-warden | 调用仓库根目录的 bootstrap.sh，安装、更新、卸载和检查面板与代理 |
 | bbr | 查看 BBR 状态、启用或回滚、检查方案兼容性、测试可用算法 |
+
+统一菜单是主要入口；功能目录保留给脚本调用和高级操作。
+
+## 从零运行
+
+`toolbox.sh` 单独存在时也能运行。脚本检测到缺少 `toolbox/lib/common.sh` 或功能目录后，会按以下顺序自动获取源码：
+
+1. `NW_TOOLBOX_ARCHIVE_URLS` 或 `NW_ARCHIVE_URLS` 指定的地址；
+2. `NW_TOOLBOX_ARCHIVE_URL` 或 `NW_ARCHIVE_URL` 指定的地址；
+3. GitHub archive、codeload；
+4. `NW_GITHUB_PROXY`、ghfast.top、gh-proxy.com。
+
+获取成功后使用临时目录中的源码继续执行。安装时 bootstrap.sh 直接使用这份源码，不会再次要求手工下载。
 
 ## 常用工具
 
@@ -58,7 +76,18 @@ bash toolbox.sh common docker-mirror-speedtest --apply
 
 ## Node Warden
 
-功能目录直接执行仓库根目录的 `bootstrap.sh`：
+主菜单选择“一键安装或重新配置 Node Warden”即可；也可以直接执行：
+
+```bash
+sudo bash toolbox.sh install
+sudo bash toolbox.sh update
+sudo bash toolbox.sh status
+sudo bash toolbox.sh uninstall
+sudo bash toolbox.sh cn-setup
+sudo bash toolbox.sh cn-restore
+```
+
+`node-warden` 功能目录保留同样的操作：
 
 ```bash
 sudo bash toolbox.sh node-warden install

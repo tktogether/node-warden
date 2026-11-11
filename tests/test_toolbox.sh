@@ -21,10 +21,22 @@ if validate_seconds 0; then fail 'seconds 0 accepted'; fi
 version=$(bash toolbox.sh version)
 [ "$version" = "Node Warden Toolbox $(tr -d '[:space:]' < VERSION)" ] || fail "unexpected version: $version"
 
+help=$(bash toolbox.sh help)
+grep -q '一键安装 Node Warden' <<< "$help" || fail 'install entry missing from help'
+grep -q 'toolbox.sh remote' <<< "$help" || fail 'remote entry missing from help'
+grep -q '不需要手工下载源码' <<< "$help" || fail 'remote install note missing from help'
+
+remote=$(bash toolbox.sh remote)
+grep -q 'toolbox.sh' <<< "$remote" || fail 'remote command missing'
+grep -q ' install' <<< "$remote" || fail 'remote install command missing'
+
 modules=$(bash toolbox.sh list)
 for id in common node-warden bbr; do
   grep -q "$id" <<< "$modules" || fail "module missing: $id"
 done
+
+node_list=$(bash toolbox.sh node-warden list)
+grep -q 'install' <<< "$node_list" || fail 'node-warden install action missing'
 
 common=$(bash toolbox.sh common list)
 for id in system-info net-bench docker-mirror-speedtest dns-check port-check github-speedtest cert-check disk-usage docker-info; do
@@ -37,4 +49,19 @@ for action in status install rollback schemes benchmark legacy; do
 done
 
 bash toolbox.sh self-test >/dev/null || fail 'self-test failed'
+
+# 单独复制 toolbox.sh，验证会自动获取源码并继续执行。
+self_tmp=$(mktemp -d)
+mkdir -p "$self_tmp/standalone"
+cp "$ROOT_DIR/toolbox.sh" "$self_tmp/standalone/toolbox.sh"
+tar --exclude='.git' --exclude='__pycache__' --exclude='.chrome-warden-c' -czf "$self_tmp/pkg.tar.gz" -C "$ROOT_DIR" .
+if command -v cygpath >/dev/null 2>&1; then
+  self_url="file://$(cygpath -m "$self_tmp/pkg.tar.gz")"
+else
+  self_url="file://$self_tmp/pkg.tar.gz"
+fi
+self_output=$(cd "$self_tmp/standalone" && NW_TOOLBOX_ARCHIVE_URL="$self_url" bash toolbox.sh version)
+grep -q 'Node Warden Toolbox' <<< "$self_output" || fail 'self bootstrap did not run toolbox'
+cd "$ROOT_DIR"
+rm -rf "$self_tmp"
 printf 'toolbox tests passed.\n'

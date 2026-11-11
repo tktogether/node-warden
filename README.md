@@ -189,16 +189,22 @@ GitHub 下载代理和 Docker 镜像代理的对外路由由网关配置决定�
 
 ## 工具箱
 
-`toolbox.sh` 是仓库的统一工具入口，包含常用检查、Node Warden 安装维护和 BBR 配置测试：
+`toolbox.sh` 是统一入口。运行后会直接显示安装、更新、状态、卸载、常用工具和 BBR 菜单；新机器不需要手工下载源码。
 
 ```bash
-sudo bash toolbox.sh
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
+```
+
+也可以直接执行操作：
+
+```bash
+sudo bash toolbox.sh install
 bash toolbox.sh common system-info
-sudo bash toolbox.sh node-warden status
+sudo bash toolbox.sh status
 sudo bash toolbox.sh bbr status
 ```
 
-详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
+单独运行 `toolbox.sh` 时，如果当前目录不是完整源码，脚本会自动获取源码后继续。详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
 
 ## 服务清单
 
