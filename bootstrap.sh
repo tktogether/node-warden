@@ -63,6 +63,9 @@ ASSUME_YES=0
 AUTO_CERT=${NW_AUTO_CERT:-1}
 ACME_EMAIL=${NW_ACME_EMAIL:-}
 CN_SCRIPT_URL=${NW_CN_SCRIPT_URL:-}
+CN_SETUP_AFTER_INSTALL=0
+CN_OPTIONS_CONFIGURED=0
+CN_OPTION_EXPLICIT=0
 GATEWAY=${NW_GATEWAY:-1}
 GATEWAY_CONFIG=/etc/nginx/conf.d/node-warden.conf
 GATEWAY_ACME_ROOT=/var/www/node-warden-acme
@@ -98,7 +101,7 @@ Node Warden 统一入口
   uninstall    停止并删除面板和代理组件
   status       显示组件状态和监听端口
   self-test    运行本地语法、单元测试和组件自检
-  cn-setup     设置国内机的 APT 镜像、BBR 和可选 Docker 镜像
+  cn-setup     交互选择 APT 镜像、BBR 和可选 Docker 镜像；带选项时按选项执行
   cn-restore   恢复最近一次 cn-setup 修改的文件
   help         显示本帮助
 
@@ -108,6 +111,7 @@ Node Warden 统一入口
   --email EMAIL          ACME 证书邮箱；留空时不提供邮箱
   --no-auto-cert         不自动申请证书
   --no-gateway           不安装或修改 nginx 网关，由已有反向代理转发
+  --cn-setup             安装完成后按当前选项执行国内网络设置；未指定选项时使用默认值
   --yes, -y              非交互确认
   --non-interactive      不显示安装向导
   --cn-script-url URL    安装后提示的国内网络设置脚本地址
@@ -173,6 +177,7 @@ parse_options() {
       --email) [ $# -ge 2 ] || die '--email 缺少值'; ACME_EMAIL=$2; shift 2 ;;
       --no-auto-cert) AUTO_CERT=0; shift ;;
       --no-gateway) GATEWAY=0; shift ;;
+      --cn-setup) CN_SETUP_AFTER_INSTALL=1; CN_OPTIONS_CONFIGURED=1; shift ;;
       --yes|-y) ASSUME_YES=1; shift ;;
       --non-interactive) NON_INTERACTIVE=1; shift ;;
       --cn-script-url) [ $# -ge 2 ] || die '--cn-script-url 缺少值'; CN_SCRIPT_URL=$2; shift 2 ;;
@@ -199,11 +204,11 @@ parse_options() {
       --recreate) RECREATE=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --purge) PURGE=1; shift ;;
-      --apt-mirror) [ $# -ge 2 ] || die '--apt-mirror 缺少值'; APT_MIRROR=$2; shift 2 ;;
-      --no-apt) NO_APT=1; shift ;;
-      --no-bbr) NO_BBR=1; shift ;;
-      --no-apt-update) NO_APT_UPDATE=1; shift ;;
-      --docker-mirror) [ $# -ge 2 ] || die '--docker-mirror 缺少值'; DOCKER_MIRROR=$2; shift 2 ;;
+      --apt-mirror) [ $# -ge 2 ] || die '--apt-mirror 缺少值'; APT_MIRROR=$2; CN_OPTION_EXPLICIT=1; shift 2 ;;
+      --no-apt) NO_APT=1; CN_OPTION_EXPLICIT=1; shift ;;
+      --no-bbr) NO_BBR=1; CN_OPTION_EXPLICIT=1; shift ;;
+      --no-apt-update) NO_APT_UPDATE=1; CN_OPTION_EXPLICIT=1; shift ;;
+      --docker-mirror) [ $# -ge 2 ] || die '--docker-mirror 缺少值'; DOCKER_MIRROR=$2; CN_OPTION_EXPLICIT=1; shift 2 ;;
       --backup-dir) [ $# -ge 2 ] || die '--backup-dir 缺少值'; BACKUP_DIR=$2; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die "未知参数：$1" ;;
@@ -223,6 +228,17 @@ validate_base_path() {
     *..*) die '--base-path 不能包含 ..' ;;
     *[!A-Za-z0-9/_.-]*) die '--base-path 只能包含字母、数字、点、下划线、连字符和斜杠' ;;
   esac
+}
+
+is_http_url() {
+  case "$1" in
+    http://?*|https://?*) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[[:space:]]*) return 1 ;;
+  esac
+  return 0
 }
 
 validate_options() {
@@ -245,6 +261,12 @@ validate_options() {
     path="${path%/}"
     [ -n "$path" ] || path=/
     [ "$path" = "$BASE_PATH" ] || die "面板地址路径必须等于 $BASE_PATH：$PUBLIC_URL"
+  fi
+  if [ -n "$APT_MIRROR" ] && ! is_http_url "$APT_MIRROR"; then
+    die "APT 镜像地址无效：$APT_MIRROR"
+  fi
+  if [ -n "$DOCKER_MIRROR" ] && ! is_http_url "$DOCKER_MIRROR"; then
+    die "Docker 镜像地址无效：$DOCKER_MIRROR"
   fi
   if [ -n "$ACME_EMAIL" ]; then
     case "$ACME_EMAIL" in
@@ -1118,7 +1140,14 @@ cn_setup() {
   require_root
   need_linux
   need_cmd python3
-  local backup_dir
+  local backup_dir prompted=0
+  if [ "$CN_OPTIONS_CONFIGURED" = 0 ] && [ "$CN_OPTION_EXPLICIT" = 0 ] && [ "$NON_INTERACTIVE" = 0 ] && [ "$DRY_RUN" = 0 ] && tty_available; then
+    interactive_cn_options
+    prompted=1
+  fi
+  if [ "$prompted" = 1 ] && [ "$ASSUME_YES" = 0 ]; then
+    ask_yes_no '确认应用国内网络设置？' y || die '已取消国内网络设置'
+  fi
   backup_dir=$(cn_new_backup_dir) || die '无法创建备份目录'
   [ -n "$backup_dir" ] || backup_dir=$CN_BACKUP_DIR
   if [ "$DRY_RUN" = 0 ]; then printf '%s\n' "$backup_dir" > "$backup_dir/INFO"; fi
@@ -1371,6 +1400,51 @@ ask_yes_no() {
   done
 }
 
+interactive_cn_options() {
+  [ "$DRY_RUN" = 0 ] || return 0
+  [ "$NON_INTERACTIVE" = 0 ] || return 0
+  tty_available || return 0
+  note '国内网络设置'
+  if ask_yes_no '使用国内 APT 镜像？' y; then
+    NO_APT=0
+    ask_value 'APT 镜像根地址' "$APT_MIRROR" APT_MIRROR
+    is_http_url "$APT_MIRROR" || die "APT 镜像地址无效：$APT_MIRROR"
+  else
+    NO_APT=1
+  fi
+  if ask_yes_no '启用 BBR？' y; then
+    NO_BBR=0
+  else
+    NO_BBR=1
+  fi
+  if ask_yes_no '设置 Docker 镜像加速？' n; then
+    ask_value 'Docker 镜像地址（留空跳过）' "$DOCKER_MIRROR" DOCKER_MIRROR
+    if [ -n "$DOCKER_MIRROR" ] && ! is_http_url "$DOCKER_MIRROR"; then
+      die "Docker 镜像地址无效：$DOCKER_MIRROR"
+    fi
+  else
+    DOCKER_MIRROR=''
+  fi
+  if [ "$NO_APT" = 0 ]; then
+    if ask_yes_no '修改 APT 源后执行 apt-get update？' y; then
+      NO_APT_UPDATE=0
+    else
+      NO_APT_UPDATE=1
+    fi
+  else
+    if ask_yes_no '是否仍执行 apt-get update？' n; then
+      NO_APT_UPDATE=0
+    else
+      NO_APT_UPDATE=1
+    fi
+  fi
+  CN_OPTIONS_CONFIGURED=1
+  note '国内网络设置选项：'
+  if [ "$NO_APT" = 0 ]; then note "  APT 镜像：$APT_MIRROR"; else note '  APT 镜像：跳过'; fi
+  if [ "$NO_BBR" = 0 ]; then note '  BBR：启用'; else note '  BBR：跳过'; fi
+  if [ -n "$DOCKER_MIRROR" ]; then note "  Docker 镜像：$DOCKER_MIRROR"; else note '  Docker 镜像：跳过'; fi
+}
+
 interactive_install() {
   [ "$DRY_RUN" = 0 ] || return 0
   [ "$NON_INTERACTIVE" = 0 ] || return 0
@@ -1407,6 +1481,10 @@ interactive_install() {
     fi
   fi
   if [ "$ASSUME_YES" = 0 ]; then
+    if ask_yes_no '是否同时进行国内网络设置（APT 镜像、BBR、可选 Docker 镜像）？' n; then
+      CN_SETUP_AFTER_INSTALL=1
+      interactive_cn_options
+    fi
     ask_yes_no '确认开始安装？' y || die '已取消安装'
   fi
 }
@@ -1417,7 +1495,7 @@ show_cn_hint() {
     url="${PUBLIC_URL%/}/bootstrap.sh"
   fi
   note ''
-  note '国内网络设置（可选）：'
+  note '国内网络设置（可选）：交互选择 APT 镜像、BBR 和 Docker 镜像。'
   if [ -n "$url" ]; then
     printf '脚本地址：%s\n' "$url"
     printf '执行：sudo bash <(curl -fsSL %s) cn-setup\n' "$url"
@@ -1458,7 +1536,13 @@ main() {
       install_docker_proxy
       configure_panel_proxy_env
       show_status
-      show_cn_hint
+      if [ "$CN_SETUP_AFTER_INSTALL" = 1 ]; then
+        if ! ( cn_setup ); then
+          warn '国内网络设置未完成；面板已安装，可稍后执行 cn-setup 重试。'
+        fi
+      else
+        show_cn_hint
+      fi
       ;;
     update)
       require_root
@@ -1474,6 +1558,11 @@ main() {
       install_docker_proxy
       configure_panel_proxy_env
       show_status
+      if [ "$CN_SETUP_AFTER_INSTALL" = 1 ]; then
+        if ! ( cn_setup ); then
+          warn '国内网络设置未完成；面板已安装，可稍后执行 cn-setup 重试。'
+        fi
+      fi
       ;;
     uninstall)
       require_root

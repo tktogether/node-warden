@@ -1,2 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["chunks/lib-B3Vojwd3.js","chunks/chunk-mlkTr37E.js"])))=>i.map(i=>d[i]);
-import{o as e}from"./chunk-mlkTr37E.js";import{t}from"./preload-helper-N5KMZaxC.js";import{i as n}from"./sidepanel-BT8yGnoh.js";async function r(r){let{value:i}=await(await t(()=>import(`./lib-B3Vojwd3.js`).then(t=>e(t.default,1)),__vite__mapDeps([0,1]))).extractRawText({arrayBuffer:await r.arrayBuffer()}),a=i.trim();if(a.length<1)throw new n(r.name);return a}export{r as extractDocx};

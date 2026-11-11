@@ -9,6 +9,7 @@ cd "$ROOT_DIR"
 "$PYTHON_BIN" deploy/ghproxy.py --self-test
 bash -n bootstrap.sh
 bash tests/test_bootstrap.sh
+bash tests/test_toolbox.sh
 for script in deploy/*.sh; do
   bash -n "$script"
 done

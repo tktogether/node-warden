@@ -25,7 +25,11 @@ if ( BASE_PATH='/../etc'; validate_base_path ) >/dev/null 2>&1; then fail 'bad b
   tty_available() { return 0; }
   detect_domain() { printf '%s\n' 'detected.example.com'; }
   ask_value() { printf -v "$3" '%s' "${answers[$index]}"; index=$((index + 1)); }
-  ask_yes_no() { return 0; }
+  ask_yes_no() {
+    local value=${yes_answers[$yes_index]:-n}
+    yes_index=$((yes_index + 1))
+    [ "$value" = y ]
+  }
   DRY_RUN=0
   NON_INTERACTIVE=0
   ASSUME_YES=0
@@ -36,10 +40,78 @@ if ( BASE_PATH='/../etc'; validate_base_path ) >/dev/null 2>&1; then fail 'bad b
   DOCKER_PROXY=1
   BASE_PATH=/warden
   index=0
-  answers=('1' '/warden' 'example.com' 'y')
+  yes_index=0
+  answers=('1' '/warden' 'example.com')
+  yes_answers=('n' 'y')
   interactive_install >/dev/null
   [ "$PUBLIC_URL" = 'https://example.com/warden' ] || fail 'interactive public URL'
   [ "$CERT_DOMAIN" = 'example.com' ] || fail 'interactive certificate domain'
+  [ "$CN_SETUP_AFTER_INSTALL" = 0 ] || fail 'interactive CN setup should be skipped'
+)
+
+(
+  tty_available() { return 0; }
+  detect_domain() { printf '%s\n' 'detected.example.com'; }
+  ask_value() { printf -v "$3" '%s' "${answers[$index]}"; index=$((index + 1)); }
+  ask_yes_no() {
+    local value=${yes_answers[$yes_index]:-n}
+    yes_index=$((yes_index + 1))
+    [ "$value" = y ]
+  }
+  DRY_RUN=0
+  NON_INTERACTIVE=0
+  ASSUME_YES=0
+  PUBLIC_URL=''
+  CERT_DOMAIN=''
+  PANEL=1
+  GHPROXY=1
+  DOCKER_PROXY=1
+  BASE_PATH=/warden
+  APT_MIRROR='https://mirrors.aliyun.com'
+  DOCKER_MIRROR=''
+  NO_APT=0
+  NO_BBR=0
+  NO_APT_UPDATE=0
+  CN_SETUP_AFTER_INSTALL=0
+  CN_OPTIONS_CONFIGURED=0
+  index=0
+  yes_index=0
+  answers=('1' '/warden' 'example.com')
+  yes_answers=('y' 'n' 'n' 'n' 'n' 'y')
+  interactive_install >/dev/null
+  [ "$CN_SETUP_AFTER_INSTALL" = 1 ] || fail 'interactive CN setup flag'
+  [ "$NO_APT" = 1 ] || fail 'interactive CN apt skip'
+  [ "$NO_BBR" = 1 ] || fail 'interactive CN bbr skip'
+  [ "$NO_APT_UPDATE" = 1 ] || fail 'interactive CN update skip'
+  [ "$CN_OPTIONS_CONFIGURED" = 1 ] || fail 'interactive CN configured'
+)
+
+(
+  tty_available() { return 0; }
+  DRY_RUN=0
+  NON_INTERACTIVE=0
+  APT_MIRROR='https://mirrors.aliyun.com'
+  DOCKER_MIRROR=''
+  NO_APT=0
+  NO_BBR=0
+  NO_APT_UPDATE=0
+  CN_OPTIONS_CONFIGURED=0
+  index=0
+  yes_index=0
+  answers=('https://mirrors.example.com' 'https://docker.example.com')
+  yes_answers=('y' 'n' 'y' 'n')
+  ask_value() { printf -v "$3" '%s' "${answers[$index]}"; index=$((index + 1)); }
+  ask_yes_no() {
+    local value=${yes_answers[$yes_index]:-n}
+    yes_index=$((yes_index + 1))
+    [ "$value" = y ]
+  }
+  interactive_cn_options >/dev/null
+  [ "$NO_APT" = 0 ] || fail 'CN APT option'
+  [ "$NO_BBR" = 1 ] || fail 'CN BBR option'
+  [ "$NO_APT_UPDATE" = 1 ] || fail 'CN apt update option'
+  [ "$DOCKER_MIRROR" = 'https://docker.example.com' ] || fail 'CN Docker mirror option'
+  [ "$CN_OPTIONS_CONFIGURED" = 1 ] || fail 'CN options configured flag'
 )
 
 (

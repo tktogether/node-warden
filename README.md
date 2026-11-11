@@ -85,11 +85,11 @@ sudo NW_ARCHIVE_URLS="https://mirror.example.com/node-warden.tar.gz https://gith
 | --repo OWNER/REPO | NW_REPO | 源码仓库，默认 tktogether/node-warden |
 | --branch BRANCH | NW_BRANCH | 源码分支，默认 main |
 
-面板安装后还会在面板地址下的 bootstrap.sh 提供同一份脚本，例如 https://panel.example.com/warden/bootstrap.sh。安装结束时脚本会打印国内网络设置所需的命令；交互安装还会询问是否现在执行。
+面板安装后还会在面板地址下的 bootstrap.sh 提供同一份脚本，例如 https://panel.example.com/warden/bootstrap.sh。安装结束时脚本会打印国内网络设置所需的命令；交互安装会询问是否现在执行，并逐项选择 APT 镜像、BBR 和 Docker 镜像。
 
 ### 本地安装
 
-在终端直接执行 install 会进入安装向导。向导依次询问安装组件、面板路径，以及面板域名或完整 URL。脚本会尝试从已安装面板、certbot 证书和主机名中读取域名，作为向导的默认值。
+在终端直接执行 install 会进入安装向导。向导依次询问安装组件、面板路径、面板域名或完整 URL，以及是否进行国内网络设置。脚本会尝试从已安装面板、certbot 证书和主机名中读取域名，作为向导的默认值。
 
 ~~~bash
 sudo bash bootstrap.sh install
@@ -114,6 +114,7 @@ sudo bash bootstrap.sh install --non-interactive --public-url https://panel.exam
 | --no-gateway | 不安装或修改 nginx 网关，使用已有反向代理 |
 | --yes, -y | 跳过安装确认 |
 | --non-interactive | 不显示安装向导 |
+| --cn-setup | 安装完成后按当前国内网络选项执行；没有选项时使用默认值 |
 
 默认行为：
 
@@ -152,7 +153,7 @@ sudo bash bootstrap.sh cn-setup --docker-mirror https://docker.example.com
 sudo bash bootstrap.sh cn-restore
 ~~~
 
-cn-setup 会修改 APT 源（默认 mirrors.aliyun.com）、启用 BBR，并在指定 --docker-mirror 时写入 Docker 的 registry-mirrors。修改前把文件备份到 /var/backups/node-warden-cn/<时间>/，cn-restore 读取该备份恢复。
+cn-setup 不带选项时会逐项询问：是否使用国内 APT 镜像、是否启用 BBR、是否设置 Docker 镜像加速、是否执行 apt-get update。也可以直接给出 --apt-mirror、--no-apt、--no-bbr、--docker-mirror、--no-apt-update 跳过询问。修改前把文件备份到 /var/backups/node-warden-cn/<时间>/，cn-restore 读取该备份恢复。
 
 所有命令都支持 --dry-run，只打印将执行的变更。
 
@@ -185,6 +186,20 @@ GitHub 下载代理和 Docker 镜像代理的对外路由由网关配置决定�
 ### 登录
 
 打开 https://panel.example.com/warden/，输入安装时显示的访问密钥。登录后进入“设置”，修改访问密钥。修改后当前会话会更新，其他已登录会话立即失效。
+
+## 工具箱
+
+`toolbox.sh` 是仓库的统一工具入口，包含常用检查、Node Warden 安装维护和 BBR 配置测试：
+
+```bash
+sudo bash toolbox.sh
+bash toolbox.sh common system-info
+sudo bash toolbox.sh node-warden status
+sudo bash toolbox.sh bbr status
+```
+
+详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
+
 ## 服务清单
 
 服务清单是 /etc/node-warden/services.json，权限 600，只有 root 可写。结构如下：

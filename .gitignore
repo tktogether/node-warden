@@ -7,3 +7,9 @@ __pycache__/
 .venv/
 backups/
 *.tar.gz
+
+# test artifacts
+.chrome-warden*
+.ui-*.png
+nw-*.tgz
+.tmp-*
