@@ -1,77 +1,81 @@
 #!/usr/bin/env bash
-# 测试 toolbox.sh 的入口、清单和公共参数校验，不修改系统。
-set -euo pipefail
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-cd "$ROOT_DIR"
+# Node Warden Toolbox 转发脚本测试：参数转发、本地覆盖、错误提示和行尾。
 
-fail() { printf 'toolbox test failed: %s\n' "$1" >&2; exit 1; }
+set -uo pipefail
 
-# shellcheck source=/dev/null
-source "$ROOT_DIR/toolbox/lib/common.sh"
+ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+TOOLBOX="$ROOT_DIR/toolbox.sh"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-validate_host example.com || fail 'valid host rejected'
-if validate_host '-bad.example.com'; then fail 'bad host accepted'; fi
-if validate_host 'bad host'; then fail 'host with space accepted'; fi
-validate_port 443 || fail 'valid port rejected'
-if validate_port 0; then fail 'port 0 accepted'; fi
-if validate_port 65536; then fail 'port 65536 accepted'; fi
-validate_seconds 10 || fail 'valid seconds rejected'
-if validate_seconds 0; then fail 'seconds 0 accepted'; fi
+PASS=0
+FAIL=0
+ok() { PASS=$((PASS + 1)); printf 'ok %s\n' "$1"; }
+bad() { FAIL=$((FAIL + 1)); printf 'not ok %s：%s\n' "$1" "$2"; }
 
-candidates=$(github_url_candidates 'https://raw.githubusercontent.com/tktogether/node-warden/main/VERSION')
-grep -q '^https://raw.githubusercontent.com/' <<< "$candidates" || fail 'direct GitHub URL missing'
-grep -q 'gh-proxy.com' <<< "$candidates" || fail 'gh-proxy fallback missing'
-grep -q 'ghproxy.net' <<< "$candidates" || fail 'ghproxy.net fallback missing'
-grep -q 'cdn.jsdelivr.net' <<< "$candidates" || fail 'jsDelivr fallback missing'
-archive_candidates=$(github_url_candidates 'https://github.com/tktogether/node-warden/archive/refs/heads/main.tar.gz')
-grep -q 'ghfast.top' <<< "$archive_candidates" || fail 'ghfast fallback missing'
+check_rc() {
+  local name=$1 expected=$2 actual=$3
+  if [[ "$actual" -eq "$expected" ]]; then ok "$name"; else bad "$name" "退出码 $actual，期望 $expected"; fi
+}
 
-version=$(bash toolbox.sh version)
-[ "$version" = "Node Warden Toolbox $(tr -d '[:space:]' < VERSION)" ] || fail "unexpected version: $version"
+check_contains() {
+  local name=$1 text=$2 needle=$3
+  if [[ "$text" == *"$needle"* ]]; then ok "$name"; else bad "$name" "缺少：$needle"; fi
+}
 
-help=$(bash toolbox.sh help)
-grep -q '一键安装 Node Warden' <<< "$help" || fail 'install entry missing from help'
-grep -q 'toolbox.sh remote' <<< "$help" || fail 'remote entry missing from help'
-grep -q '不需要手工下载源码' <<< "$help" || fail 'remote install note missing from help'
+check_empty() {
+  local name=$1 text=$2
+  if [[ -z "$text" ]]; then ok "$name"; else bad "$name" "内容非空：$text"; fi
+}
 
-remote=$(bash toolbox.sh remote)
-grep -q 'toolbox.sh' <<< "$remote" || fail 'remote command missing'
-grep -q ' install' <<< "$remote" || fail 'remote install command missing'
-grep -q 'gh-proxy.com' <<< "$remote" || fail 'remote proxy command missing'
-grep -q 'cdn.jsdelivr.net' <<< "$remote" || fail 'remote jsDelivr command missing'
+printf '#!/usr/bin/env bash\nprintf "FAKE_TOOLBOX %%s\\n" "$*"\n' > "$TMP_DIR/fake-toolbox.sh"
+printf '#!/usr/bin/env bash\nexit 3\n' > "$TMP_DIR/fail-toolbox.sh"
 
-modules=$(bash toolbox.sh list)
-for id in common node-warden bbr; do
-  grep -q "$id" <<< "$modules" || fail "module missing: $id"
-done
+out=$(WARDEN_TOOLBOX_LOCAL="$TMP_DIR/fake-toolbox.sh" bash "$TOOLBOX" version 2>&1)
+rc=$?
+check_rc "版本转发退出码" 0 "$rc"
+check_contains "版本转发参数" "$out" "FAKE_TOOLBOX version"
 
-node_list=$(bash toolbox.sh node-warden list)
-grep -q 'install' <<< "$node_list" || fail 'node-warden install action missing'
+out=$(WARDEN_TOOLBOX_LOCAL="$TMP_DIR/fake-toolbox.sh" bash "$TOOLBOX" common port-check 443 2>&1)
+check_contains "多参数转发" "$out" "FAKE_TOOLBOX common port-check 443"
 
-common=$(bash toolbox.sh common list)
-for id in system-info net-bench docker-mirror-speedtest dns-check port-check github-speedtest cert-check disk-usage docker-info; do
-  grep -q "$id" <<< "$common" || fail "common tool missing: $id"
-done
+out=$(WARDEN_TOOLBOX_LOCAL="$TMP_DIR/fake-toolbox.sh" bash "$TOOLBOX" 2>&1)
+rc=$?
+check_rc "无参数转发退出码" 0 "$rc"
+check_contains "无参数转发" "$out" "FAKE_TOOLBOX"
 
-bbr=$(bash toolbox.sh bbr list)
-for action in status install rollback schemes benchmark legacy; do
-  grep -q "$action" <<< "$bbr" || fail "bbr action missing: $action"
-done
+out=$(WARDEN_TOOLBOX_LOCAL="$TMP_DIR/fail-toolbox.sh" bash "$TOOLBOX" status 2>&1)
+rc=$?
+check_rc "子脚本退出码透传" 3 "$rc"
 
-bash toolbox.sh self-test >/dev/null || fail 'self-test failed'
+out=$(WARDEN_TOOLBOX_LOCAL="$TMP_DIR/missing.sh" bash "$TOOLBOX" version 2>&1)
+rc=$?
+check_rc "本地覆盖不可用退出码" 1 "$rc"
+check_contains "本地覆盖不可用提示" "$out" "WARDEN_TOOLBOX_LOCAL"
 
-# 单独复制 toolbox.sh，验证会自动获取源码并继续执行。
-self_tmp=$(mktemp -d)
-mkdir -p "$self_tmp/standalone"
-cp "$ROOT_DIR/toolbox.sh" "$self_tmp/standalone/toolbox.sh"
-tar --exclude='.git' --exclude='__pycache__' --exclude='.chrome-warden-c' -czf "$self_tmp/pkg.tar.gz" -C "$ROOT_DIR" .
-if command -v cygpath >/dev/null 2>&1; then
-  self_url="file://$(cygpath -m "$self_tmp/pkg.tar.gz")"
+content=$(cat "$TOOLBOX")
+check_contains "文件含 Node Warden Toolbox 标识" "$content" "Node Warden Toolbox"
+check_contains "转发到独立仓库" "$content" "tktogether/warden-toolbox"
+check_contains "提供地址覆盖" "$content" "WARDEN_TOOLBOX_URL"
+check_contains "提供本地覆盖" "$content" "WARDEN_TOOLBOX_LOCAL"
+
+if [[ -d "$ROOT_DIR/toolbox" ]]; then
+  bad "仓库不再包含 toolbox 目录" "目录仍存在"
 else
-  self_url="file://$self_tmp/pkg.tar.gz"
+  ok "仓库不再包含 toolbox 目录"
 fi
-self_output=$(cd "$self_tmp/standalone" && NW_TOOLBOX_ARCHIVE_URL="$self_url" bash toolbox.sh version)
-grep -q 'Node Warden Toolbox' <<< "$self_output" || fail 'self bootstrap did not run toolbox'
-cd "$ROOT_DIR"
-rm -rf "$self_tmp"
-printf 'toolbox tests passed.\n'
+
+if grep -q 'NW_TOOLBOX_ARCHIVE_URL' "$TOOLBOX"; then
+  bad "转发脚本不含旧自举逻辑" "发现 NW_TOOLBOX_ARCHIVE_URL"
+else
+  ok "转发脚本不含旧自举逻辑"
+fi
+
+cr_files=$(grep -rIl $'\r' "$TOOLBOX" "$ROOT_DIR/docs/TOOLBOX.md" 2>/dev/null || true)
+check_empty "脚本与文档为 LF 行尾" "$cr_files"
+
+if (( FAIL > 0 )); then
+  printf '\n通过 %d 项，失败 %d 项。\n' "$PASS" "$FAIL"
+  exit 1
+fi
+printf '\n通过 %d 项，失败 0 项。\n' "$PASS"

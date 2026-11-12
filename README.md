@@ -198,11 +198,11 @@ GitHub 下载代理和 Docker 镜像代理的对外路由由网关配置决定�
 
 ## 工具箱
 
-`toolbox.sh` 是统一入口。运行后会直接显示安装、更新、状态、卸载、常用工具和 BBR 菜单；新机器不需要手工下载源码。
+工具箱已独立为 [tktogether/warden-toolbox](https://github.com/tktogether/warden-toolbox)。本仓库根目录的 `toolbox.sh` 为转发脚本，下载独立工具箱并转发全部参数，`bash toolbox.sh <操作>` 的旧用法保持可用。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh -o /tmp/node-warden-toolbox.sh
-sudo bash /tmp/node-warden-toolbox.sh
+curl -fsSL https://raw.githubusercontent.com/tktogether/warden-toolbox/main/toolbox.sh -o /tmp/warden-toolbox.sh
+sudo bash /tmp/warden-toolbox.sh
 ```
 
 也可以直接执行操作：
@@ -214,7 +214,7 @@ sudo bash toolbox.sh status
 sudo bash toolbox.sh bbr status
 ```
 
-单独运行 `toolbox.sh` 时，如果当前目录不是完整源码，脚本会按 GitHub 直连、指定代理、ghfast.top、gh-proxy.com、ghproxy.net 的顺序自动获取源码。`sudo bash toolbox.sh remote` 会列出当前可用下载通道。详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
+转发脚本按 `WARDEN_TOOLBOX_LOCAL`、`WARDEN_TOOLBOX_URL`、GitHub 直连和多通道代理的顺序获取独立工具箱，下载后校验首行为 `#!` 再执行。详细说明见 [docs/TOOLBOX.md](docs/TOOLBOX.md)。
 
 ## 服务清单
 
