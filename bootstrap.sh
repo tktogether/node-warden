@@ -163,9 +163,11 @@ Node Warden 统一入口
 
 示例：
   sudo bash bootstrap.sh install
-  sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
+  curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+  sudo bash /tmp/node-warden-bootstrap.sh install
   sudo bash bootstrap.sh install --public-url https://panel.example.com/warden --non-interactive
-  sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --public-url https://panel.example.com/warden'
+  curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+  sudo bash /tmp/node-warden-bootstrap.sh install --public-url https://panel.example.com/warden
   sudo bash bootstrap.sh install --github-proxy https://proxy.example.com --public-url https://panel.example.com/warden
   sudo bash bootstrap.sh update
   sudo bash bootstrap.sh status
@@ -1559,7 +1561,7 @@ show_cn_hint() {
   note '国内网络设置（可选）：选择 APT 镜像、BBR、Docker 镜像和 GitHub 镜像。'
   if [ -n "$url" ]; then
     printf '脚本地址：%s\n' "$url"
-    printf '执行：sudo bash <(curl -fsSL %s) cn-setup%s --yes --non-interactive\n' "$url" "$opts"
+    printf '执行：curl -fsSL %s -o /tmp/node-warden-bootstrap.sh && sudo bash /tmp/node-warden-bootstrap.sh cn-setup%s --yes --non-interactive\n' "$url" "$opts"
   else
     printf '在源码目录执行：sudo bash bootstrap.sh cn-setup\n'
   fi

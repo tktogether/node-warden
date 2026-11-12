@@ -159,8 +159,10 @@ Node Warden Toolbox
   sudo bash toolbox.sh update
 
 远程运行（不需要手工下载源码）：
-  sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
-  sudo bash <(curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
+  curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh -o /tmp/node-warden-toolbox.sh
+  sudo bash /tmp/node-warden-toolbox.sh
+  curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh -o /tmp/node-warden-toolbox.sh
+  sudo bash /tmp/node-warden-toolbox.sh
   运行 remote 操作可查看当前可用的下载通道。
 
 说明：
@@ -180,7 +182,7 @@ remote_command() {
   local url
   printf '远程运行命令（按可用性选择）：\n'
   while IFS= read -r url; do
-    printf '  sudo bash <(curl -fsSL %s)\n' "$url"
+    printf '  curl -fsSL %s -o /tmp/node-warden-toolbox.sh && sudo bash /tmp/node-warden-toolbox.sh\n' "$url"
   done < <(toolbox_remote_urls)
   printf '\n安装 Node Warden：在命令末尾加 install。\n'
 }

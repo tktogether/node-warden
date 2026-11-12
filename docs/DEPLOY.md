@@ -50,15 +50,19 @@ sudo editor /tmp/services.json
 新机器不需要先下载源码，直接执行下面这一行。脚本会进入安装向导，安装完成后打印访问地址。
 
 ~~~bash
-sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install
 ~~~
 
 需要无人值守时，使用下面的完整参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试 GitHub 直连、codeload、指定的 GitHub 代理、ghfast.top、gh-proxy.com 和 ghproxy.net。可用参数和环境变量覆盖地址。
 
 ~~~bash
-sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
-sudo bash -c 'bash <(curl -fsSL https://cdn.jsdelivr.net/gh/tktogether/node-warden@main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
-sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --github-proxy https://proxy.example.com --non-interactive --public-url https://panel.example.com/warden'
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
+curl -fsSL https://cdn.jsdelivr.net/gh/tktogether/node-warden@main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
+curl -fsSL https://proxy.example.com/https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --github-proxy https://proxy.example.com --non-interactive --public-url https://panel.example.com/warden
 ~~~
 
 | 参数 | 环境变量 | 说明 |

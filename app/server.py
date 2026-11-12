@@ -267,7 +267,7 @@ class PanelApp:
             opts.extend(["--git-mirror", origin])
         script_url = public_url + "/bootstrap.sh"
         toolbox_url = public_url + "/toolbox.sh"
-        command = "sudo bash <(curl -fsSL %s) cn-setup" % script_url
+        command = "curl -fsSL %s -o /tmp/node-warden-bootstrap.sh && sudo bash /tmp/node-warden-bootstrap.sh cn-setup" % script_url
         if opts:
             command += " " + " ".join(opts)
         command += " --yes --non-interactive"

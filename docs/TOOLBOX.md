@@ -7,7 +7,8 @@
 新机器直接运行，不需要手工下载源码：
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh -o /tmp/node-warden-toolbox.sh
+sudo bash /tmp/node-warden-toolbox.sh
 ```
 
 脚本会自动获取源码并显示统一菜单。菜单包含安装、更新、状态、卸载、常用工具和 BBR；选择“一键安装或重新配置 Node Warden”后会继续执行安装向导。国内网络环境下如果直连失败，可以改用代理地址，或先运行 `remote` 查看可用通道。

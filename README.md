@@ -45,7 +45,8 @@ Node Warden 是运行在单台 Linux 服务器上的服务管理控制台。它�
 新机器不需要先下载源码。直接执行下面这一行，脚本会进入安装向导，安装完成后打印访问地址：
 
 ~~~bash
-sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install'
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install
 ~~~
 
 需要无人值守时，在命令后加安装参数。脚本发现当前目录没有 app 和 static 后，会按顺序尝试下载源码压缩包：
@@ -60,17 +61,21 @@ GitHub 直连、raw 和 codeload 都可能被网络阻断。国内机器建议�
 
 ~~~bash
 # GitHub raw
-sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
 
 # jsDelivr 镜像脚本
-sudo bash -c 'bash <(curl -fsSL https://cdn.jsdelivr.net/gh/tktogether/node-warden@main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden'
+curl -fsSL https://cdn.jsdelivr.net/gh/tktogether/node-warden@main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
 
 # 自建 GitHub 代理；同时把源码下载也走该代理
-sudo bash -c 'bash <(curl -fsSL https://proxy.example.com/https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --github-proxy https://proxy.example.com --non-interactive --public-url https://panel.example.com/warden'
+curl -fsSL https://proxy.example.com/https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
+sudo bash /tmp/node-warden-bootstrap.sh install --github-proxy https://proxy.example.com --non-interactive --public-url https://panel.example.com/warden
 
 # 明确指定源码地址，可给多个地址，按空格分隔
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh -o /tmp/node-warden-bootstrap.sh
 sudo NW_ARCHIVE_URLS="https://mirror.example.com/node-warden.tar.gz https://github.com/tktogether/node-warden/archive/refs/heads/main.tar.gz" \
-  bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/bootstrap.sh) install --non-interactive --public-url https://panel.example.com/warden
+  bash /tmp/node-warden-bootstrap.sh install --non-interactive --public-url https://panel.example.com/warden
 ~~~
 
 远程执行时，脚本在临时目录解压源码，安装结束后清理临时目录。也可以先用 --source-dir 指定已经解压的源码目录。
@@ -196,7 +201,8 @@ GitHub 下载代理和 Docker 镜像代理的对外路由由网关配置决定�
 `toolbox.sh` 是统一入口。运行后会直接显示安装、更新、状态、卸载、常用工具和 BBR 菜单；新机器不需要手工下载源码。
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh)
+curl -fsSL https://raw.githubusercontent.com/tktogether/node-warden/main/toolbox.sh -o /tmp/node-warden-toolbox.sh
+sudo bash /tmp/node-warden-toolbox.sh
 ```
 
 也可以直接执行操作：
